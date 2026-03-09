@@ -1,0 +1,14 @@
+# Test files should be treated as binary to preserve exact byte content
+# This ensures checksums and CRCs remain valid
+*.bin binary
+*.s19 binary
+*.hex binary
+*.elf binary
+*.txt binary
+*.vmem binary
+*.hexdump binary
+*.i binary
+*.sh binary
+*.axf binary
+*.out binary
+.gitattributes binary

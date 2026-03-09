@@ -1,0 +1,12 @@
+# Auto detect text files and normalize line endings
+* text=auto
+
+# C# source files
+*.cs text diff=csharp
+
+# Solution and project files (always CRLF for Visual Studio)
+*.sln text eol=crlf
+*.csproj text eol=crlf
+
+# Documentation
+*.md text
