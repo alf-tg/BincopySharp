@@ -9,7 +9,7 @@ using BincopySharp;
 namespace BincopySharp.Tests
 {
     /// <summary>
-    /// Port of test_bincopy.py from Python bincopy library.
+    /// Port of test_bincopy.py from Python bincopy library version 20.1.1.
     /// Each test maintains 1:1 mapping with original Python tests.
     /// </summary>
     public class BincopyTests
@@ -33,7 +33,6 @@ namespace BincopySharp.Tests
             Assert.Equal(expected, actual);
         }
 
-        // Python: test_srec
         [Fact]
         public void TestSrec()
         {
@@ -74,13 +73,9 @@ namespace BincopySharp.Tests
             Assert.Contains("S2144002640000000002000000060000001800000022", ex.Message);
         }
 
-        // Python: test_bad_srec
         [Fact]
         public void TestBadSrec()
-        {
-            // Note: pack_srec and unpack_srec are internal utilities in C#
-            // These tests verify error handling through the public API
-            
+        {            
             // Test: Invalid SREC records should throw exceptions
             var binFile = new BinFile();
             
@@ -113,7 +108,6 @@ namespace BincopySharp.Tests
             Assert.Contains("but got '11'", ex.Message);
         }
 
-        // Python: test_ti_txt
         [Fact]
         public void TestTiTxt()
         {
@@ -149,7 +143,6 @@ namespace BincopySharp.Tests
             Assert.Equal(empty.AsTiTxt(), binFile.AsTiTxt());
         }
 
-        // Python: test_bad_ti_txt
         [Fact]
         public void TestBadTiTxt()
         {
@@ -172,11 +165,10 @@ namespace BincopySharp.Tests
                 {
                     binFile.AddTiTxtFile(GetTestFilePath(filename));
                 });
-                Assert.Contains(expectedMessage, ex.Message, StringComparison.OrdinalIgnoreCase);
+                Assert.Equal(expectedMessage, ex.Message);
             }
         }
 
-        // Python: test_compare_ti_txt
         [Fact]
         public void TestCompareTiTxt()
         {
@@ -296,7 +288,6 @@ namespace BincopySharp.Tests
                         ":00000001FF\n", result);
         }
 
-        // Python: test_i8hex_address_above_64k
         [Fact]
         public void TestI8hexAddressAbove64k()
         {
@@ -308,10 +299,9 @@ namespace BincopySharp.Tests
                 binFile.AsIhex(addressLengthBits: 16);
             });
 
-            Assert.Contains("cannot address more than 64 kB in I8HEX files (16 bits addresses)", ex.Message);
+            Assert.Equal("cannot address more than 64 kB in I8HEX files (16 bits addresses)", ex.Message);
         }
 
-        // Python: test_i16hex
         [Fact]
         public void TestI16hex()
         {
@@ -365,7 +355,6 @@ namespace BincopySharp.Tests
                         ":00000001FF\n", result);
         }
 
-        // Python: test_i16hex_address_above_1meg
         [Fact]
         public void TestI16hexAddressAbove1meg()
         {
@@ -377,10 +366,9 @@ namespace BincopySharp.Tests
                 binFile.AsIhex(addressLengthBits: 24);
             });
 
-            Assert.Contains("cannot address more than 1 MB in I16HEX files (20 bits addresses)", ex.Message);
+            Assert.Equal("cannot address more than 1 MB in I16HEX files (20 bits addresses)", ex.Message);
         }
 
-        // Python: test_i32hex
         [Fact]
         public void TestI32hex()
         {
@@ -417,7 +405,6 @@ namespace BincopySharp.Tests
             Assert.Equal(new byte[] { 0x05 }, binFile.GetRange(0xffffffffUL, 0x100000000UL));
         }
 
-        // Python: test_i32hex_address_above_4gig
         [Fact]
         public void TestI32hexAddressAbove4gig()
         {
@@ -429,10 +416,9 @@ namespace BincopySharp.Tests
                 binFile.AsIhex(addressLengthBits: 32);
             });
 
-            Assert.Contains("cannot address more than 4 GB in I32HEX files (32 bits addresses)", ex.Message);
+            Assert.Equal("cannot address more than 4 GB in I32HEX files (32 bits addresses)", ex.Message);
         }
 
-        // Python: test_binary
         [Fact]
         public void TestBinary()
         {
@@ -506,7 +492,6 @@ namespace BincopySharp.Tests
             Assert.Equal(Array.Empty<byte>(), binFile.AsBinary(minimumAddress: 2, maximumAddress: 0));
         }
 
-        // Python: test_add_file
         [Fact]
         public void TestAddFile()
         {
@@ -533,7 +518,6 @@ namespace BincopySharp.Tests
             });
         }
 
-        // Python: test_array
         [Fact]
         public void TestArray()
         {
@@ -546,7 +530,6 @@ namespace BincopySharp.Tests
             Assert.Equal(expected, result);
         }
 
-        // Python: test_hexdump_1
         [Fact]
         public void TestHexdump1()
         {
@@ -561,7 +544,6 @@ namespace BincopySharp.Tests
             Assert.Equal(expected, result);
         }
 
-        // Python: test_hexdump_2
         [Fact]
         public void TestHexdump2()
         {
@@ -576,7 +558,6 @@ namespace BincopySharp.Tests
             Assert.Equal(expected, result);
         }
 
-        // Python: test_hexdump_gaps
         [Fact]
         public void TestHexdumpGaps()
         {
@@ -592,7 +573,6 @@ namespace BincopySharp.Tests
             Assert.Equal(expected, result);
         }
 
-        // Python: test_hexdump_empty
         [Fact]
         public void TestHexdumpEmpty()
         {
@@ -600,7 +580,6 @@ namespace BincopySharp.Tests
             Assert.Equal("\n", binFile.AsHexdump());
         }
 
-        // Python: test_srec_ihex_binary
         [Fact]
         public void TestSrecIhexBinary()
         {
@@ -632,7 +611,6 @@ namespace BincopySharp.Tests
             Assert.Equal(expectedBin, binFile.AsBinary());
         }
 
-        // Python: test_exclude_crop (part 1 - exclude tests)
         [Fact]
         public void TestExclude()
         {
@@ -754,7 +732,6 @@ namespace BincopySharp.Tests
             Assert.Equal(Encoding.ASCII.GetBytes("111111"), binFile.AsBinary());
         }
 
-        // Python: test_exclude_crop (part 2 - crop tests)
         [Fact]
         public void TestCrop()
         {
@@ -771,7 +748,6 @@ namespace BincopySharp.Tests
             Assert.Equal(Array.Empty<byte>(), binFile.AsBinary());
         }
 
-        // Python: test_segments_list
         [Fact]
         public void TestSegmentsList()
         {
@@ -795,7 +771,6 @@ namespace BincopySharp.Tests
             Assert.Equal(new byte[] { 0x03, 0x04, 0x05 }, segments[2].Data);
         }
 
-        // Python: test_info
         [Fact]
         public void TestInfo()
         {
@@ -812,7 +787,6 @@ namespace BincopySharp.Tests
             Assert.Contains("0x0000000c - 0x0000000f", info);
         }
 
-        // Python: test_binary_16
         [Fact]
         public void TestBinary16()
         {
@@ -872,7 +846,6 @@ namespace BincopySharp.Tests
             Assert.Equal(expectedHexdump, binFile.AsHexdump());
         }
 
-        // Python: test_add
         [Fact]
         public void TestAdd()
         {
@@ -922,7 +895,6 @@ namespace BincopySharp.Tests
             });
         }
 
-        // Python: test_init_files
         [Fact]
         public void TestInitFiles()
         {
@@ -947,7 +919,6 @@ namespace BincopySharp.Tests
             });
         }
 
-        // Python: test_minimum_maximum_length
         [Fact]
         public void TestMinimumMaximumLength()
         {
@@ -984,7 +955,6 @@ namespace BincopySharp.Tests
             Assert.Equal((ulong)79, binFile.Length);
         }
 
-        // Python: test_iterate_segments
         [Fact]
         public void TestIterateSegments()
         {
@@ -1002,7 +972,6 @@ namespace BincopySharp.Tests
             Assert.Equal(1, binFile.Segments.Count);
         }
 
-        // Python: test_chunks_list
         [Fact]
         public void TestChunksList()
         {
@@ -1151,7 +1120,6 @@ namespace BincopySharp.Tests
             Assert.Equal(new byte[] { 0x0a }, chunks[5].Item2);
         }
 
-        // Python: test_chunks_bad_arguments
         [Fact]
         public void TestChunksBadArguments()
         {
@@ -1179,7 +1147,6 @@ namespace BincopySharp.Tests
             Assert.Contains("padding must be a word value (size 1)", ex.Message);
         }
 
-        // Python: test_segment
         [Fact]
         public void TestSegment()
         {
@@ -1213,7 +1180,6 @@ namespace BincopySharp.Tests
             Assert.Contains("segment does not exist", ex.Message);
         }
 
-        // Python: test_add_files
         [Fact]
         public void TestAddFiles()
         {
@@ -1228,7 +1194,6 @@ namespace BincopySharp.Tests
             Assert.Equal(new byte[] { 0x00, 0x01 }, binFile.AsBinary());
         }
 
-        // Python: test_execution_start_address
         [Fact]
         public void TestExecutionStartAddress()
         {
@@ -1242,7 +1207,6 @@ namespace BincopySharp.Tests
             Assert.Equal((ulong)0x00400401, binFile.ExecutionStartAddress);
         }
 
-        // Python: test_add_ihex_record_type_3
         [Fact]
         public void TestAddIhexRecordType3()
         {
@@ -1252,7 +1216,6 @@ namespace BincopySharp.Tests
             Assert.Equal((ulong)0x02030405, binFile.ExecutionStartAddress);
         }
 
-        // Python: test_add_ihex_record_type_5
         [Fact]
         public void TestAddIhexRecordType5()
         {
@@ -1262,7 +1225,6 @@ namespace BincopySharp.Tests
             Assert.Equal((ulong)0x01020304, binFile.ExecutionStartAddress);
         }
 
-        // Python: test_add_ihex_bad_record_type_6
         [Fact]
         public void TestAddIhexBadRecordType6()
         {
@@ -1273,11 +1235,9 @@ namespace BincopySharp.Tests
                 binFile.AddIhex(":00000006FA");
             });
             
-            Assert.Contains("expected type", ex.Message.ToLower());
-            Assert.Contains("but got 6", ex.Message);
+            Assert.Equal("Expected type 0..5 in record :00000006FA, but got 6", ex.Message);
         }
 
-        // Python: test_as_ihex_bad_address_length_bits
         [Fact]
         public void TestAsIhexBadAddressLengthBits()
         {
@@ -1289,10 +1249,9 @@ namespace BincopySharp.Tests
                 binFile.AsIhex(addressLengthBits: 8);
             });
             
-            Assert.Contains("expected address length 16, 24 or 32, but got 8", ex.Message.ToLower());
+            Assert.Equal("Expected address length 16, 24 or 32, but got 8 (Parameter 'AddressLengthBits')", ex.Message);
         }
 
-        // Python: test_as_srec_bad_address_length
         [Fact]
         public void TestAsSrecBadAddressLength()
         {
@@ -1303,13 +1262,9 @@ namespace BincopySharp.Tests
                 binFile.AsSrec(addressLengthBits: 40);
             });
             
-            // C# validates address length directly (better than Python which calculates type first)
-            // Python: type_ = str((40 // 8) - 1) = '4', then raises "expected data record type 1..3, but got 4"
-            // C#: validates address length directly, raises "Expected address length 16, 24 or 32, but got 40"
             Assert.Contains("Expected address length 16, 24 or 32, but got 40", ex.Message);
         }
 
-        // Python: test_as_srec_record_5
         [Fact]
         public void TestAsSrecRecord5()
         {
@@ -1324,7 +1279,6 @@ namespace BincopySharp.Tests
             Assert.Contains("S503FFFFFE", records);
         }
 
-        // Python: test_as_srec_record_6
         [Fact]
         public void TestAsSrecRecord6()
         {
@@ -1339,7 +1293,6 @@ namespace BincopySharp.Tests
             Assert.Contains("S604010000FA", records);
         }
 
-        // Python: test_as_srec_record_8
         [Fact]
         public void TestAsSrecRecord8()
         {
@@ -1354,7 +1307,6 @@ namespace BincopySharp.Tests
                         "S8041234565F\n", records);
         }
 
-        // Python: test_word_size
         [Fact]
         public void TestWordSize()
         {
@@ -1367,7 +1319,6 @@ namespace BincopySharp.Tests
             Assert.Equal(out16BitsWord, binFile.AsSrec(30, 24));
         }
 
-        // Python: test_word_size_default_padding
         [Fact]
         public void TestWordSizeDefaultPadding()
         {
@@ -1380,7 +1331,6 @@ namespace BincopySharp.Tests
             Assert.Equal(expected, binFile.AsBinary());
         }
 
-        // Python: test_ihex_crc
         [Fact]
         public void TestIhexCrc()
         {
@@ -1388,7 +1338,6 @@ namespace BincopySharp.Tests
             Assert.Equal(0, BincopySharp.Utilities.ChecksumCalculator.CalculateIhexChecksum("00000000"));
         }
 
-        // Python: test_issue_4_1
         [Fact]
         public void TestIssue41()
         {
@@ -1401,7 +1350,6 @@ namespace BincopySharp.Tests
             Assert.Equal(expected, binFile.AsIhex());
         }
 
-        // Python: test_issue_4_2
         [Fact]
         public void TestIssue42()
         {
@@ -1414,7 +1362,6 @@ namespace BincopySharp.Tests
             Assert.Equal(expected, binFile.AsIhex());
         }
 
-        // Python: test_non_sorted_segments
         [Fact]
         public void TestNonSortedSegments()
         {
@@ -1427,7 +1374,6 @@ namespace BincopySharp.Tests
             Assert.Equal(expected, binFile.AsSrec());
         }
 
-        // Python: test_fill
         [Fact]
         public void TestFill()
         {
@@ -1444,7 +1390,6 @@ namespace BincopySharp.Tests
             Assert.Equal(new byte[] { 0x01, 0x02, 0x03, 0x04, 0xff, 0xff, 0xff, 0xff, 0x01, 0x02, 0x03, 0x04 }, binFile.AsBinary());
         }
 
-        // Python: test_fill_max_words
         [Fact]
         public void TestFillMaxWords()
         {
@@ -1462,7 +1407,6 @@ namespace BincopySharp.Tests
             Assert.Equal(new byte[] { 0x04 }, binFile.Segments[1].Data);
         }
 
-        // Python: test_header_default_encoding
         [Fact]
         public void TestHeaderDefaultEncoding()
         {
@@ -1475,7 +1419,6 @@ namespace BincopySharp.Tests
             Assert.Equal("bincopy/empty_main.s20", binFile.Header);
         }
 
-        // Python: test_performance
         [Fact(Skip = "Performance test - takes too long")]
         public void TestPerformance()
         {
@@ -1506,7 +1449,6 @@ namespace BincopySharp.Tests
             binFile.AddSrec(srec);
         }
 
-        // Python: test_verilog_vmem
         [Fact]
         public void TestVerilogVmem()
         {
@@ -1533,20 +1475,16 @@ namespace BincopySharp.Tests
             Assert.Equal(emptyMainBin, binFile.AsBinary(padding: 0x00));
         }
 
-        // Python: test_segment_len
         [Fact]
         public void TestSegmentLen()
         {
             int length = 0x100;
             int wordSizeBytes = 1;
             var segment = new Segment(0, (ulong)length, new byte[length], wordSizeBytes);
-            
-            // Python's len(segment) returns number of words
-            // When wordSizeBytes=1, WordCount == Length
+
             Assert.Equal((ulong)length, segment.WordCount);
         }
 
-        // Python: test_segment_len_16
         [Fact]
         public void TestSegmentLen16()
         {
@@ -1554,11 +1492,9 @@ namespace BincopySharp.Tests
             int wordSizeBytes = 2;
             var segment = new Segment(0, (ulong)length, new byte[length * wordSizeBytes], wordSizeBytes);
             
-            // Python's len(segment) returns number of words, not bytes
             Assert.Equal((ulong)length, segment.WordCount);
         }
 
-        // Python: test_bad_word_size
         [Fact]
         public void TestBadWordSize()
         {
@@ -1571,7 +1507,6 @@ namespace BincopySharp.Tests
             Assert.Contains("but got 7", ex.Message);
         }
 
-        // Python: test_ignore_blank_lines_hex
         [Fact]
         public void TestIgnoreBlankLinesHex()
         {
@@ -1584,7 +1519,6 @@ namespace BincopySharp.Tests
             Assert.Equal(inHex, binFile.AsIhex());
         }
 
-        // Python: test_ignore_blank_lines_srec
         [Fact]
         public void TestIgnoreBlankLinesSrec()
         {
@@ -1597,7 +1531,6 @@ namespace BincopySharp.Tests
             Assert.Equal(inS19, binFile.AsSrec(28, 16));
         }
 
-        // Python: test_print
         [Fact]
         public void TestPrint()
         {
@@ -1605,14 +1538,11 @@ namespace BincopySharp.Tests
             
             string inS19 = File.ReadAllText(GetTestFilePath("in.s19"));
             binFile.AddSrec(inS19);
-            
-            // Python test just prints the binfile (calls __str__)
-            // In C# we verify ToString() doesn't throw
+
             string result = binFile.ToString();
             Assert.NotNull(result);
         }
 
-        // Python: test_exclude_edge_cases
         [Fact]
         public void TestExcludeEdgeCases()
         {
@@ -1631,21 +1561,17 @@ namespace BincopySharp.Tests
             Assert.Equal(1, binFile.Segments.Count);
         }
 
-        // Python: test_layout_empty_main
         [Fact]
         public void TestLayoutEmptyMain()
         {
             var binFile = new BinFile();
             binFile.AddFile(GetTestFilePath("empty_main.s19"));
             
-            // Python: "0x400238" + 64 spaces + "0x601038" = 80 chars
-            // Python: "-" + 78 spaces + "-" = 80 chars
             string expected = "0x400238                                                                0x601038\n" +
                             "-                                                                              -\n";
             Assert.Equal(expected, binFile.Layout());
         }
 
-        // Python: test_layout_out
         [Fact]
         public void TestLayoutOut()
         {
@@ -1657,7 +1583,6 @@ namespace BincopySharp.Tests
             Assert.Equal(expected, binFile.Layout());
         }
 
-        // Python: test_layout_in_exclude_2_4
         [Fact]
         public void TestLayoutInExclude24()
         {
@@ -1669,7 +1594,6 @@ namespace BincopySharp.Tests
             Assert.Equal(expected, binFile.Layout());
         }
 
-        // Python: test_overwrite
         [Fact]
         public void TestOverwrite()
         {
@@ -1714,7 +1638,6 @@ namespace BincopySharp.Tests
             Assert.Equal(ones, binFile.AsBinary(minimumAddress: 256));
         }
 
-        // Python: test_set_get_item
         [Fact]
         public void TestSetGetItem()
         {
@@ -1779,7 +1702,6 @@ namespace BincopySharp.Tests
                 binFile.AsBinary(minimumAddress: 0x10000000UL - 1));
         }
 
-        // Python: test_set_get_item_16
         [Fact]
         public void TestSetGetItem16()
         {
@@ -1821,7 +1743,6 @@ namespace BincopySharp.Tests
             Assert.Equal(new byte[] { 0x09, 0xa0, 0xff, 0xff, 0x17, 0x18 }, binFile.AsBinary(minimumAddress: 3, maximumAddress: 8));
         }
 
-        // Python: test_word_size_custom_padding
         [Fact]
         public void TestWordSizeCustomPadding()
         {
@@ -1834,7 +1755,6 @@ namespace BincopySharp.Tests
             Assert.Equal(expected, binFile.AsBinary(null, null, new byte[] { 0xff, 0x00 }));
         }
 
-        // Python: test_fill_word_size_16
         [Fact]
         public void TestFillWordSize16()
         {
@@ -1861,7 +1781,6 @@ namespace BincopySharp.Tests
                 binFile.AsBinary());
         }
 
-        // Python: test_chunk_padding
         [Fact]
         public void TestChunkPadding()
         {
@@ -1880,7 +1799,6 @@ namespace BincopySharp.Tests
             Assert.All(chunks, c => Assert.Equal(0, c.Data.Length % align));
         }
 
-        // Python: test_merge_chunks
         [Fact]
         public void TestMergeChunks()
         {
@@ -1892,14 +1810,12 @@ namespace BincopySharp.Tests
             int size = 16;
             var chunks = hexfile.Segments.Chunks(size: size, alignment: align, padding: new byte[] { 0xff }).ToList();
             
-            // Python: assert list(chunks[-1]) == [8, b'\x10\x10\xff\xff\xff\xff\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10']
             var lastChunk = chunks[chunks.Count - 1];
             Assert.Equal(8UL, lastChunk.Address);
             Assert.Equal(new byte[] { 0x10, 0x10, 0xff, 0xff, 0xff, 0xff, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10 }, 
                         lastChunk.Data);
         }
 
-        // Python: test_merge_chunks_16
         [Fact]
         public void TestMergeChunks16()
         {
@@ -1911,7 +1827,6 @@ namespace BincopySharp.Tests
             int size = 12;
             var chunks = hexfile.Segments.Chunks(size: size, alignment: align, padding: new byte[] { 0xff, 0xff }).ToList();
             
-            // Python: assert list(chunks[-1]) == [6, b'\x10\x10\x10\x10\xff\xff\xff\xff\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10']
             var lastChunk = chunks[chunks.Count - 1];
             Assert.Equal(6UL, lastChunk.Address);
             Assert.Equal(new byte[] { 0x10, 0x10, 0x10, 0x10, 0xff, 0xff, 0xff, 0xff, 0x10, 0x10, 0x10, 0x10, 
@@ -1919,7 +1834,6 @@ namespace BincopySharp.Tests
                         lastChunk.Data);
         }
 
-        // Python: test_header_no_encoding
         [Fact]
         public void TestHeaderNoEncoding()
         {
@@ -1934,13 +1848,10 @@ namespace BincopySharp.Tests
             binfile.Header = new byte[] { 0x01, 0x80, 0x88, 0xaa, 0x90 };
             Assert.Equal(new byte[] { 0x01, 0x80, 0x88, 0xaa, 0x90 }, (byte[])binfile.Header);
 
-            // Python: with self.assertRaises(TypeError) as cm:
-            //             binfile.header = u'bincopy/empty_main.s21'
             var ex = Assert.Throws<ArgumentException>(() => binfile.Header = "bincopy/empty_main.s21");
             Assert.Contains("expected a byte array", ex.Message);
         }
 
-        // Python: test_srec_no_header_encoding
         [Fact]
         public void TestSrecNoHeaderEncoding()
         {
@@ -1951,24 +1862,19 @@ namespace BincopySharp.Tests
             Assert.Equal("S0080000018088AA90B4", binfile.AsSrec().Split('\n')[0]);
         }
 
-        // Python: test_add_microchip_hex_record
         [Fact]
         public void TestAddMicrochipHexRecord()
         {
             var binfile = new BinFile();
             binfile.AddMicrochipHex(":02000E00E4C943");
             Assert.Equal(0x0007UL, binfile.MinimumAddress);
-            
-            // Python: binfile[:binfile.minimum_address + 1]
-            // This is equivalent to binfile.as_binary(binfile.minimum_address, binfile.minimum_address + 1)
-            // which returns 1 word (2 bytes) from address 0x0007
+
             byte[] data = binfile.AsBinary(minimumAddress: binfile.MinimumAddress, 
                                           maximumAddress: binfile.MinimumAddress + 1);
             ushort firstWord = BitConverter.ToUInt16(data, 0);
             Assert.Equal(0xC9E4, firstWord);
         }
 
-        // Python: test_microchip_hex
         [Fact]
         public void TestMicrochipHex()
         {
@@ -1989,7 +1895,6 @@ namespace BincopySharp.Tests
             Assert.Equal(binfile.AsMicrochipHex(), content3);
         }
 
-        // Python: test_add_elf
         [Fact]
         public void TestAddElf()
         {
@@ -2000,7 +1905,6 @@ namespace BincopySharp.Tests
             Assert.Equal(expected, bf.AsSrec());
         }
 
-        // Python: test_add_elf_blinky
         [Fact]
         public void TestAddElfBlinky()
         {
@@ -2015,7 +1919,6 @@ namespace BincopySharp.Tests
             Assert.Equal(expectedSrec, actualSrec);
         }
 
-        // Python: test_add_elf_gcc
         [Fact]
         public void TestAddElfGcc()
         {
@@ -2026,7 +1929,6 @@ namespace BincopySharp.Tests
             Assert.Equal(expected, bf.AsBinary());
         }
 
-        // Python: test_add_elf_iar
         [Fact]
         public void TestAddElfIar()
         {
@@ -2037,7 +1939,6 @@ namespace BincopySharp.Tests
             Assert.Equal(expected, bf.AsBinary());
         }
 
-        // Python: test_add_elf_keil
         [Fact]
         public void TestAddElfKeil()
         {
