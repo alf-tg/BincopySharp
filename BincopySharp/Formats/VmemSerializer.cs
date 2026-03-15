@@ -16,7 +16,7 @@ namespace BincopySharp.Formats
             var lines = new List<string>();
 
             // Add header comment if present
-            if (!string.IsNullOrEmpty(options.Header))
+            if (options.Header != null)
             {
                 lines.Add($"/* {options.Header} */");
             }

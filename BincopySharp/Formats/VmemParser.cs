@@ -145,8 +145,8 @@ namespace BincopySharp.Formats
 
         private string RemoveComments(string text)
         {
-            // Remove /* */ style comments
-            text = Regex.Replace(text, @"/\*.*?\*/", "", RegexOptions.Singleline);
+            // Remove /* */ style comments. Replace with space
+            text = Regex.Replace(text, @"/\*.*?\*/", " ", RegexOptions.Singleline);
             
             // Remove // style comments
             var lines = text.Split('\n');

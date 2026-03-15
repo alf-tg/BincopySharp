@@ -24,7 +24,7 @@ namespace BincopySharp.Formats
                 lines.Add($"@{segment.MinimumAddress / (ulong)segments.WordSizeBytes:X4}");
 
                 // Add data lines
-                foreach (var (address, data) in segment.Chunks(numberOfDataWords))
+                foreach (var (_, data) in segment.Chunks(numberOfDataWords))
                 {
                     var sb = new StringBuilder();
                     for (int i = 0; i < data.Length; i++)

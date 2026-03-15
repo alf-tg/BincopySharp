@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Text;
 using BincopySharp.Utilities;
 
 namespace BincopySharp.Formats
@@ -16,17 +15,10 @@ namespace BincopySharp.Formats
         {
             var lines = new List<string>();
 
-            // Add header record (S0) if present - EXACTLY like Python
-            if (options.HeaderBytes != null && options.HeaderBytes.Length > 0)
+            // Add header record (S0) if present
+            if (options.HeaderBytes != null)
             {
                 string headerRecord = PackSrec('0', 0, options.HeaderBytes.Length, options.HeaderBytes);
-                lines.Add(headerRecord);
-            }
-            else if (!string.IsNullOrEmpty(options.Header))
-            {
-                // Fallback for backward compatibility
-                byte[] headerBytes = Encoding.GetEncoding("ISO-8859-1").GetBytes(options.Header);
-                string headerRecord = PackSrec('0', 0, headerBytes.Length, headerBytes);
                 lines.Add(headerRecord);
             }
 
@@ -51,16 +43,8 @@ namespace BincopySharp.Formats
                     nameof(options.AddressLengthBits));
             }
 
-            // Validate data type
-            if (dataType < '1' || dataType > '3')
-            {
-                throw new ArgumentException(
-                    $"Expected data record type 1..3, but got {dataType}",
-                    nameof(options.AddressLengthBits));
-            }
-
             // Add data records
-            int numberOfRecords = 0;
+            ulong numberOfRecords = 0;
             foreach (var (address, data) in segments.Chunks(options.NumberOfDataBytes / segments.WordSizeBytes))
             {
                 string dataRecord = PackSrec(dataType, address, data.Length, data);
@@ -71,11 +55,11 @@ namespace BincopySharp.Formats
             // Add record count record (S5 or S6)
             if (numberOfRecords <= 0xFFFF)
             {
-                lines.Add(PackSrec('5', (ulong)numberOfRecords, 0, null));
+                lines.Add(PackSrec('5', numberOfRecords, 0, null));
             }
             else if (numberOfRecords <= 0xFFFFFF)
             {
-                lines.Add(PackSrec('6', (ulong)numberOfRecords, 0, null));
+                lines.Add(PackSrec('6', numberOfRecords, 0, null));
             }
             else
             {

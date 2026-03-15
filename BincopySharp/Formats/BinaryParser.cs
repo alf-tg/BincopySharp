@@ -33,9 +33,6 @@ namespace BincopySharp.Formats
 
             if (data != null && data.Length > 0)
             {
-                // EXACTLY like Python add_binary:
-                // address *= self.word_size_bytes
-                // self._segments.add(Segment(address, address + len(data), bytearray(data), self.word_size_bytes), overwrite)
                 address *= (ulong)wordSizeBytes;
                 ulong maximumAddress = address + (ulong)data.Length;
                 var segment = new Segment(address, maximumAddress, data, wordSizeBytes);

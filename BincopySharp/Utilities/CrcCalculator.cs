@@ -1,5 +1,4 @@
 using System;
-using System.Linq;
 
 namespace BincopySharp.Utilities
 {
@@ -39,16 +38,5 @@ namespace BincopySharp.Utilities
             return (byte)crc;
         }
 
-        /// <summary>
-        /// Validates the CRC of a Motorola S-Record.
-        /// </summary>
-        /// <param name="hexString">The hex string (without S prefix and CRC).</param>
-        /// <param name="expectedCrc">The expected CRC value.</param>
-        /// <returns>True if CRC is valid, false otherwise.</returns>
-        public static bool ValidateSrecCrc(string hexString, byte expectedCrc)
-        {
-            byte calculatedCrc = CalculateSrecCrc(hexString);
-            return calculatedCrc == expectedCrc;
-        }
     }
 }

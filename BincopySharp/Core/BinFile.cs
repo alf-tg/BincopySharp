@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
+using System.IO;
+using System.Text;
 
 namespace BincopySharp
 {
@@ -19,9 +20,9 @@ namespace BincopySharp
         public ulong? ExecutionStartAddress { get; set; }
 
         /// <summary>
-        /// Gets or sets the header. EXACTLY like Python:
-        /// - When headerEncoding is null: returns/accepts byte[] only
-        /// - When headerEncoding is set: returns/accepts string only (encodes/decodes using headerEncoding)
+        /// Gets or sets the header.
+        /// When headerEncoding is null: returns/accepts byte[] only.
+        /// When headerEncoding is set: returns/accepts string only (encodes/decodes using headerEncoding).
         /// Internally always stored as bytes (_headerBytes).
         /// </summary>
         public object? Header
@@ -33,14 +34,14 @@ namespace BincopySharp
                     return null;
                 }
 
-                // EXACTLY like Python bincopy.py lines 856-860
+                // No encoding: return raw bytes
                 if (_headerEncoding == null)
                 {
-                    return _headerBytes;  // Return bytes directly
+                    return _headerBytes;
                 }
                 else
                 {
-                    return System.Text.Encoding.GetEncoding(_headerEncoding).GetString(_headerBytes);  // Decode to string
+                    return Encoding.GetEncoding(_headerEncoding).GetString(_headerBytes);
                 }
             }
             set
@@ -51,10 +52,9 @@ namespace BincopySharp
                     return;
                 }
 
-                // EXACTLY like Python bincopy.py lines 863-870
+                // No encoding: expect byte[]
                 if (_headerEncoding == null)
                 {
-                    // Python: if not isinstance(header, bytes): raise TypeError
                     if (!(value is byte[] bytes))
                     {
                         throw new ArgumentException($"expected a byte array, but got {value.GetType()}");
@@ -63,12 +63,12 @@ namespace BincopySharp
                 }
                 else
                 {
-                    // Python: self._header = header.encode(self._header_encoding)
+                    // Has encoding: expect string, encode to bytes
                     if (!(value is string str))
                     {
                         throw new ArgumentException($"expected a string, but got {value.GetType()}");
                     }
-                    _headerBytes = System.Text.Encoding.GetEncoding(_headerEncoding).GetBytes(str);
+                    _headerBytes = Encoding.GetEncoding(_headerEncoding).GetBytes(str);
                 }
             }
         }
@@ -85,7 +85,7 @@ namespace BincopySharp
                 {
                     throw new InvalidOperationException("No data available");
                 }
-                // EXACTLY like Python: minimum_address //= self.word_size_bytes
+                // Convert from word address to byte address
                 return min.Value / (ulong)WordSizeBytes;
             }
         }
@@ -102,7 +102,7 @@ namespace BincopySharp
                 {
                     throw new InvalidOperationException("No data available");
                 }
-                // EXACTLY like Python: maximum_address //= self.word_size_bytes
+                // Convert from word address to byte address
                 return max.Value / (ulong)WordSizeBytes;
             }
         }
@@ -148,7 +148,7 @@ namespace BincopySharp
         {
             get
             {
-                // EXACTLY like Python: raises IndexError if outside [min, max)
+                // Throws if address is outside [min, max)
                 ulong addrBytes = address * (ulong)WordSizeBytes;
                 ulong? minAddr = _segments.MinimumAddress;
                 ulong? maxAddr = _segments.MaximumAddress;
@@ -265,8 +265,7 @@ namespace BincopySharp
         {
             get
             {
-                // EXACTLY like Python: length = sum([len(segment.data) for segment in self.segments])
-                //                      length //= self.word_size_bytes
+                // Sum of all segment data lengths, converted to words
                 ulong totalBytes = 0;
                 foreach (var segment in _segments)
                 {
@@ -289,12 +288,10 @@ namespace BincopySharp
                 return;
             }
 
-            // EXACTLY like Python: address is in WORDS, convert to BYTES
-            // address *= self.word_size_bytes
+            // Address is in words, convert to bytes
             address *= (ulong)WordSizeBytes;
             
-            // Create segment with addresses in BYTES
-            // Segment(address, address + len(data), data, self.word_size_bytes)
+            // Create segment with addresses in bytes
             ulong maximumAddress = address + (ulong)data.Length;
             var segment = new Segment(address, maximumAddress, data, WordSizeBytes);
             _segments.Add(segment, overwrite);
@@ -318,17 +315,16 @@ namespace BincopySharp
             var detector = new Formats.FormatDetector();
             var result = detector.DetectAndParse(data);
 
-            // Add header if present - EXACTLY like Python: parsers return bytes, assign directly
+            // Add header if present
             if (result.Header != null && result.Header.Length > 0)
             {
                 if (_headerEncoding == null)
                 {
-                    Header = result.Header;  // Assign bytes directly
+                    Header = result.Header;
                 }
                 else
                 {
-                    // Decode bytes to string using headerEncoding
-                    Header = System.Text.Encoding.GetEncoding(_headerEncoding).GetString(result.Header);
+                    Header = Encoding.GetEncoding(_headerEncoding).GetString(result.Header);
                 }
             }
 
@@ -368,7 +364,7 @@ namespace BincopySharp
             // Try to read as text first (for SREC, IHEX, TI-TXT, VMEM, Microchip HEX)
             try
             {
-                string content = System.IO.File.ReadAllText(filename);
+                string content = File.ReadAllText(filename);
                 Add(content, overwrite);
                 return;
             }
@@ -376,7 +372,7 @@ namespace BincopySharp
             {
                 // Not a text format, try binary formats
             }
-            catch (System.Text.DecoderFallbackException)
+            catch (DecoderFallbackException)
             {
                 // Not a text file, try binary formats
             }
@@ -384,7 +380,7 @@ namespace BincopySharp
             // Try ELF format
             try
             {
-                byte[] data = System.IO.File.ReadAllBytes(filename);
+                byte[] data = File.ReadAllBytes(filename);
                 AddElf(data, overwrite);
                 return;
             }
@@ -450,17 +446,16 @@ namespace BincopySharp
             var parser = new Formats.SrecParser();
             var result = parser.Parse(records, WordSizeBytes);
 
-            // Add header if present - EXACTLY like Python line 948: self._header = data
+            // Add header if present
             if (result.Header != null && result.Header.Length > 0)
             {
                 if (_headerEncoding == null)
                 {
-                    Header = result.Header;  // Assign bytes directly
+                    Header = result.Header;
                 }
                 else
                 {
-                    // Decode bytes to string using headerEncoding
-                    Header = System.Text.Encoding.GetEncoding(_headerEncoding).GetString(result.Header);
+                    Header = Encoding.GetEncoding(_headerEncoding).GetString(result.Header);
                 }
             }
 
@@ -484,7 +479,7 @@ namespace BincopySharp
         /// <param name="overwrite">Whether to overwrite existing data. Default is false.</param>
         public void AddSrecFile(string filename, bool overwrite = false)
         {
-            string content = System.IO.File.ReadAllText(filename);
+            string content = File.ReadAllText(filename);
             AddSrec(content, overwrite);
         }
 
@@ -498,7 +493,6 @@ namespace BincopySharp
         {
             var serializer = new Formats.SrecSerializer();
             
-            // EXACTLY like Python: _header is always bytes internally
             byte[]? headerBytes = _headerBytes;
             
             var options = new Formats.SerializerOptions
@@ -542,7 +536,7 @@ namespace BincopySharp
         /// <param name="overwrite">Whether to overwrite existing data. Default is false.</param>
         public void AddIhexFile(string filename, bool overwrite = false)
         {
-            string content = System.IO.File.ReadAllText(filename);
+            string content = File.ReadAllText(filename);
             AddIhex(content, overwrite);
         }
 
@@ -574,18 +568,20 @@ namespace BincopySharp
         /// <param name="overwrite">Whether to overwrite existing data. Default is false.</param>
         public void AddMicrochipHex(string records, bool overwrite = false)
         {
-            // EXACTLY like Python bincopy.py lines 1151-1176
-            // Parse as Intel HEX with word size 1
-            WordSizeBytes = 1;
-            
-            AddIhex(records, overwrite);
-            
-            // Change word size to 2 for all segments
+            var parser = new Formats.MicrochipHexParser();
+            var result = parser.Parse(records);
+
+            // Set word size to 2 (Microchip HEX uses 2-byte words)
             WordSizeBytes = 2;
-            
-            foreach (var segment in _segments)
+
+            if (result.ExecutionStartAddress.HasValue)
             {
-                segment.WordSizeBytes = 2;
+                ExecutionStartAddress = result.ExecutionStartAddress.Value;
+            }
+
+            foreach (var segment in result.Segments)
+            {
+                _segments.Add(segment, overwrite);
             }
         }
 
@@ -596,7 +592,7 @@ namespace BincopySharp
         /// <param name="overwrite">Whether to overwrite existing data. Default is false.</param>
         public void AddMicrochipHexFile(string filename, bool overwrite = false)
         {
-            string content = System.IO.File.ReadAllText(filename);
+            string content = File.ReadAllText(filename);
             AddMicrochipHex(content, overwrite);
         }
 
@@ -608,26 +604,15 @@ namespace BincopySharp
         /// <returns>A string containing the Microchip HEX records.</returns>
         public string AsMicrochipHex(int numberOfDataBytes = 32, int addressLengthBits = 32)
         {
-            // EXACTLY like Python bincopy.py lines 1429-1467
-            // Temporarily change word size to 1 for serialization
-            WordSizeBytes = 1;
-            
-            foreach (var segment in _segments)
+            var serializer = new Formats.MicrochipHexSerializer();
+            var options = new Formats.SerializerOptions
             {
-                segment.WordSizeBytes = 1;
-            }
-            
-            string records = AsIhex(numberOfDataBytes, addressLengthBits);
-            
-            // Restore word size to 2
-            WordSizeBytes = 2;
-            
-            foreach (var segment in _segments)
-            {
-                segment.WordSizeBytes = 2;
-            }
-            
-            return records;
+                NumberOfDataBytes = numberOfDataBytes,
+                AddressLengthBits = addressLengthBits,
+                ExecutionStartAddress = ExecutionStartAddress
+            };
+
+            return serializer.Serialize(_segments, options);
         }
 
         /// <summary>
@@ -638,7 +623,7 @@ namespace BincopySharp
         public void AddTiTxt(string lines, bool overwrite = false)
         {
             var parser = new Formats.TiTxtParser();
-            var result = parser.Parse(lines);
+            var result = parser.Parse(lines, WordSizeBytes);
 
             // Add all segments
             foreach (var segment in result.Segments)
@@ -654,7 +639,7 @@ namespace BincopySharp
         /// <param name="overwrite">Whether to overwrite existing data. Default is false.</param>
         public void AddTiTxtFile(string filename, bool overwrite = false)
         {
-            string content = System.IO.File.ReadAllText(filename);
+            string content = File.ReadAllText(filename);
             AddTiTxt(content, overwrite);
         }
 
@@ -693,7 +678,7 @@ namespace BincopySharp
         /// <param name="overwrite">Whether to overwrite existing data. Default is false.</param>
         public void AddVerilogVmemFile(string filename, bool overwrite = false)
         {
-            string content = System.IO.File.ReadAllText(filename);
+            string content = File.ReadAllText(filename);
             AddVerilogVmem(content, overwrite);
         }
 
@@ -709,7 +694,7 @@ namespace BincopySharp
             string? headerStr = null;
             if (_headerEncoding != null && _headerBytes != null)
             {
-                headerStr = System.Text.Encoding.GetEncoding(_headerEncoding).GetString(_headerBytes);
+                headerStr = Encoding.GetEncoding(_headerEncoding).GetString(_headerBytes);
             }
             
             var options = new Formats.SerializerOptions
@@ -745,7 +730,7 @@ namespace BincopySharp
         /// <param name="overwrite">Whether to overwrite existing data. Default is false.</param>
         public void AddBinaryFile(string filename, ulong address = 0, bool overwrite = false)
         {
-            byte[] data = System.IO.File.ReadAllBytes(filename);
+            byte[] data = File.ReadAllBytes(filename);
             AddBinary(data, address, overwrite);
         }
 
@@ -810,7 +795,7 @@ namespace BincopySharp
         /// <param name="overwrite">Whether to overwrite existing data. Default is true.</param>
         public void AddElfFile(string filename, bool overwrite = true)
         {
-            byte[] data = System.IO.File.ReadAllBytes(filename);
+            byte[] data = File.ReadAllBytes(filename);
             AddElf(data, overwrite);
         }
 
@@ -851,7 +836,7 @@ namespace BincopySharp
             }
 
             ulong? previousMaxAddress = null;
-            var fillSegments = new System.Collections.Generic.List<Segment>();
+            var fillSegments = new List<Segment>();
 
             foreach (var segment in _segments)
             {
@@ -950,7 +935,7 @@ namespace BincopySharp
         public string AsArray(ulong? minimumAddress = null, byte padding = 0xFF, string separator = ", ")
         {
             byte[] binaryData = AsBinary(minimumAddress, null, padding);
-            var words = new System.Collections.Generic.List<string>();
+            var words = new List<string>();
 
             for (ulong offset = 0; offset < (ulong)binaryData.Length; offset += (ulong)WordSizeBytes)
             {
@@ -980,10 +965,10 @@ namespace BincopySharp
                 return "\n";
             }
 
-            var lines = new System.Collections.Generic.List<string>();
-            // EXACTLY like Python: addresses are displayed in WORDS
+            var lines = new List<string>();
+            // Addresses are displayed in words
             ulong lineAddress = AlignToLine(MinimumAddress * (ulong)WordSizeBytes) / (ulong)WordSizeBytes;
-            var lineData = new System.Collections.Generic.List<byte?>();
+            var lineData = new List<byte?>();
 
             foreach (var chunk in _segments.Chunks(16 / WordSizeBytes, 16 / WordSizeBytes))
             {
@@ -1048,7 +1033,7 @@ namespace BincopySharp
             return addressInBytes - (addressInBytes % 16);
         }
 
-        private string FormatHexdumpLine(ulong address, System.Collections.Generic.List<byte?> data)
+        private string FormatHexdumpLine(ulong address, List<byte?> data)
         {
             // Pad to 16 bytes
             while (data.Count < 16)
@@ -1056,7 +1041,7 @@ namespace BincopySharp
                 data.Add(null);
             }
 
-            var hexdata = new System.Collections.Generic.List<string>();
+            var hexdata = new List<string>();
             foreach (var b in data)
             {
                 if (b.HasValue)
@@ -1072,7 +1057,7 @@ namespace BincopySharp
             string firstHalf = string.Join(" ", hexdata.GetRange(0, 8));
             string secondHalf = string.Join(" ", hexdata.GetRange(8, 8));
 
-            var text = new System.Text.StringBuilder();
+            var text = new StringBuilder();
             foreach (var b in data)
             {
                 if (!b.HasValue)
@@ -1115,7 +1100,7 @@ namespace BincopySharp
         /// <returns>A string containing information about the binary file.</returns>
         public string Info()
         {
-            var info = new System.Text.StringBuilder();
+            var info = new StringBuilder();
 
             // Add header if present
             if (Header != null)
@@ -1128,7 +1113,7 @@ namespace BincopySharp
                 else if (Header is byte[] bytes)
                 {
                     // Display binary header with escape sequences
-                    var sb = new System.Text.StringBuilder();
+                    var sb = new StringBuilder();
                     foreach (byte b in bytes)
                     {
                         if (b >= 32 && b <= 126 && b != '\\')  // Printable ASCII
@@ -1147,17 +1132,17 @@ namespace BincopySharp
                     headerDisplay = Header.ToString() ?? "";
                 }
                 
-                info.AppendLine($"Header:                  {headerDisplay}");
+                info.Append($"Header:                  {headerDisplay}\n");
             }
 
             // Add execution start address if present
             if (ExecutionStartAddress.HasValue)
             {
-                info.AppendLine($"Execution start address: 0x{ExecutionStartAddress.Value:x8}");
+                info.Append($"Execution start address: 0x{ExecutionStartAddress.Value:x8}\n");
             }
 
-            info.AppendLine("Data ranges:");
-            info.AppendLine();
+            info.Append("Data ranges:\n");
+            info.Append('\n');
 
             // Add segment information
             foreach (var segment in _segments)
@@ -1167,7 +1152,7 @@ namespace BincopySharp
                 ulong maximumAddress = minimumAddress + (size / (ulong)WordSizeBytes);
                 
                 string sizeStr = FormatSize(size);
-                info.AppendLine($"    0x{minimumAddress:x8} - 0x{maximumAddress:x8} ({sizeStr})");
+                info.Append($"    0x{minimumAddress:x8} - 0x{maximumAddress:x8} ({sizeStr})\n");
             }
 
             return info.ToString();
@@ -1194,7 +1179,7 @@ namespace BincopySharp
             string maxAddrStr = $"0x{MaximumAddress:x}";
             int padding = Math.Max(width - minAddrStr.Length - maxAddrStr.Length, 0);
             
-            var output = new System.Text.StringBuilder();
+            var output = new StringBuilder();
             output.Append($"{minAddrStr}{new string(' ', padding)}{maxAddrStr}\n");
 
             for (int i = 0; i < width; i++)

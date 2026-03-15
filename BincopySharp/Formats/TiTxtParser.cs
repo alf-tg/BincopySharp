@@ -33,8 +33,12 @@ namespace BincopySharp.Formats
 
         public ParseResult Parse(string data)
         {
+            return Parse(data, 1);
+        }
+
+        public ParseResult Parse(string data, int wordSizeBytes)
+        {
             var result = new ParseResult();
-            int wordSizeBytes = 1; // Default word size
             ulong? address = null;
             bool eofFound = false;
 
@@ -56,7 +60,7 @@ namespace BincopySharp.Formats
                         throw new BincopyException("bad line length");
                     }
 
-                    if (line[0] == 'q' || line[0] == 'Q')
+                    if (line[0] == 'q')
                     {
                         eofFound = true;
                     }

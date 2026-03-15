@@ -100,8 +100,6 @@ namespace BincopySharp.Formats
                             sectionSize = (ulong)sec64.Size;
                         }
 
-                        ulong sectionAddress = segmentAddress + sectionOffset - segmentOffset;
-
                         if (sectionSize == 0)
                         {
                             continue;
@@ -122,14 +120,16 @@ namespace BincopySharp.Formats
                                 continue;
                             }
 
+                            // Calculate section address (safe: sectionOffset >= segmentOffset guaranteed here)
+                            ulong sectionAddress = segmentAddress + sectionOffset - segmentOffset;
+
                             // Get section data
                             byte[] sectionData = section.GetContents();
 
                             if (sectionData != null && sectionData.Length > 0)
                             {
-                                ulong address = sectionAddress;
-                                ulong maxAddress = address + (ulong)sectionData.Length;
-                                var seg = new Segment(address, maxAddress, sectionData, wordSizeBytes);
+                                ulong maxAddress = sectionAddress + (ulong)sectionData.Length;
+                                var seg = new Segment(sectionAddress, maxAddress, sectionData, wordSizeBytes);
                                 result.Segments.Add(seg);
                             }
                         }

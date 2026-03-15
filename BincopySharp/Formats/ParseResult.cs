@@ -19,7 +19,6 @@ namespace BincopySharp.Formats
 
         /// <summary>
         /// Gets or sets the header bytes, if present in the file.
-        /// EXACTLY like Python: always stored as bytes internally.
         /// </summary>
         public byte[]? Header { get; set; }
 

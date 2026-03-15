@@ -1,6 +1,5 @@
 using System;
 using System.IO;
-using System.Linq;
 using BincopySharp.Utilities;
 
 namespace BincopySharp.Formats
@@ -80,7 +79,7 @@ namespace BincopySharp.Formats
 
                     if (type == '0')
                     {
-                        // S0 record contains header - store as bytes directly (like Python)
+                        // S0 record contains header
                         result.Header = recordData;
                     }
                     else if (type == '1' || type == '2' || type == '3')
@@ -141,7 +140,7 @@ namespace BincopySharp.Formats
                 throw new InvalidRecordException(record, $"Record '{record}' has wrong size");
             }
 
-            // Determine address width based on record type (validate type BEFORE CRC like Python)
+            // Determine address width based on record type (validate type before CRC)
             int width;
             if ("0159".IndexOf(type) >= 0)
             {
@@ -160,24 +159,26 @@ namespace BincopySharp.Formats
                 throw new InvalidRecordException(record, $"expected record type 0..3 or 5..9, but got '{type}'");
             }
 
-            // Extract address (may be incomplete, like Python)
             int dataOffset = 1 + width;
             
-            // Extract address bytes and convert to ulong (equivalent to Python's int.from_bytes)
-            int addressLength = Math.Min(width, value.Length - 2); // -2 for size byte and CRC
-            byte[] addressBytes = new byte[addressLength];
-            Array.Copy(value, 1, addressBytes, 0, addressLength);
+            // Extract address bytes and convert to ulong
+            byte[] addressBytes = new byte[width];
+            Array.Copy(value, 1, addressBytes, 0, width);
             ulong address = HexConverter.UInt64FromBigEndian(addressBytes);
 
             // Extract data (everything except size, address, and CRC)
-            int dataLength = Math.Max(0, value.Length - dataOffset - 1);
+            int dataLength = value.Length - dataOffset - 1;
+            if (dataLength < 0) 
+            {
+                dataLength = 0;
+            }
             byte[] data = new byte[dataLength];
             if (dataLength > 0)
             {
                 Array.Copy(value, dataOffset, data, 0, dataLength);
             }
 
-            // Validate CRC AFTER type validation (to match Python behavior)
+            // Validate CRC
             byte actualCrc = value[value.Length - 1];
             byte expectedCrc = CrcCalculator.CalculateSrecCrc(record.Substring(2, record.Length - 4));
 
@@ -188,12 +189,6 @@ namespace BincopySharp.Formats
                     $"expected crc '{expectedCrc:X2}' in record {record}, but got '{actualCrc:X2}'",
                     expectedCrc,
                     actualCrc);
-            }
-
-            // Validate structure AFTER CRC (like Python does implicitly)
-            if (value.Length < dataOffset + 1)
-            {
-                throw new InvalidRecordException(record, $"Record '{record}' too short for address width {width}");
             }
 
             return (type, address, dataLength, data);

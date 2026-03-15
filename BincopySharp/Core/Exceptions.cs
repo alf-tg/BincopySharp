@@ -67,13 +67,13 @@ namespace BincopySharp
         /// <summary>
         /// Gets the address where the conflict occurred.
         /// </summary>
-        public int ConflictAddress { get; }
+        public ulong ConflictAddress { get; }
 
         /// <summary>
         /// Initializes a new instance of the AddDataException class.
         /// </summary>
         /// <param name="address">The address where the conflict occurred.</param>
-        public AddDataException(int address)
+        public AddDataException(ulong address)
             : base($"Data already present at address 0x{address:X}")
         {
             ConflictAddress = address;
@@ -84,7 +84,7 @@ namespace BincopySharp
         /// </summary>
         /// <param name="address">The address where the conflict occurred.</param>
         /// <param name="message">The error message.</param>
-        public AddDataException(int address, string message)
+        public AddDataException(ulong address, string message)
             : base(message)
         {
             ConflictAddress = address;

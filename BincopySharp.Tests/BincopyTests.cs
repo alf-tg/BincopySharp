@@ -68,9 +68,7 @@ namespace BincopySharp.Tests
                 binFile.AddSrecFile(GetTestFilePath("bad_crc.s19"));
             });
             
-            Assert.Contains("expected crc '25'", ex.Message);
-            Assert.Contains("but got '22'", ex.Message);
-            Assert.Contains("S2144002640000000002000000060000001800000022", ex.Message);
+            Assert.Equal("expected crc '25' in record S2144002640000000002000000060000001800000022, but got '22'", ex.Message);
         }
 
         [Fact]
@@ -96,16 +94,14 @@ namespace BincopySharp.Tests
             {
                 binFile.AddSrec("S.0200FF");
             });
-            Assert.Contains("expected record type 0..3 or 5..9", exBadType.Message);
-            Assert.Contains("but got '.'", exBadType.Message);
+            Assert.Equal("expected record type 0..3 or 5..9, but got '.'", exBadType.Message);
 
             // Bad CRC
             var ex = Assert.ThrowsAny<BincopyException>(() =>
             {
                 binFile.AddSrec("S1020011");
             });
-            Assert.Contains("expected crc 'FD'", ex.Message);
-            Assert.Contains("but got '11'", ex.Message);
+            Assert.Equal("expected crc 'FD' in record S1020011, but got '11'", ex.Message);
         }
 
         [Fact]
@@ -217,22 +213,21 @@ namespace BincopySharp.Tests
             {
                 binFile.AddIhex("");
             });
-            Assert.Contains("Cannot parse empty Intel HEX data", ex1.Message);
+            Assert.Equal("Cannot parse empty Intel HEX data", ex1.Message);
 
             // Bad first character
             var ex2 = Assert.ThrowsAny<BincopyException>(() =>
             {
                 binFile.AddIhex(".0011110022");
             });
-            Assert.Contains("not starting with a ':'", ex2.Message);
+            Assert.Equal("Record '.0011110022' not starting with a ':'", ex2.Message);
 
             // Bad checksum
             var ex3 = Assert.ThrowsAny<BincopyException>(() =>
             {
                 binFile.AddIhex(":0011110022");
             });
-            Assert.Contains("Expected checksum 'DE'", ex3.Message);
-            Assert.Contains("but got '22'", ex3.Message);
+            Assert.Equal("Expected checksum 'DE' in record :0011110022, but got '22'", ex3.Message);
         }
 
         [Fact]
@@ -753,8 +748,9 @@ namespace BincopySharp.Tests
         {
             var binFile = new BinFile();
             binFile.AddBinary(new byte[] { 0x00 }, address: 0);
-            binFile.AddBinary(new byte[] { 0x01, 0x02 }, address: 5);
-            binFile.AddBinary(new byte[] { 0x03, 0x04, 0x05 }, address: 12);
+            binFile.AddBinary(new byte[] { 0x01, 0x02 }, address: 10);
+            binFile.AddBinary(new byte[] { 0x03 }, address: 12);
+            binFile.AddBinary(new byte[] { 0x04 }, address: 1000);
 
             var segments = new List<(ulong Address, byte[] Data)>();
             foreach (var segment in binFile.Segments)
@@ -765,26 +761,32 @@ namespace BincopySharp.Tests
             Assert.Equal(3, segments.Count);
             Assert.Equal((ulong)0, segments[0].Address);
             Assert.Equal(new byte[] { 0x00 }, segments[0].Data);
-            Assert.Equal((ulong)5, segments[1].Address);
-            Assert.Equal(new byte[] { 0x01, 0x02 }, segments[1].Data);
-            Assert.Equal((ulong)12, segments[2].Address);
-            Assert.Equal(new byte[] { 0x03, 0x04, 0x05 }, segments[2].Data);
+            Assert.Equal((ulong)10, segments[1].Address);
+            Assert.Equal(new byte[] { 0x01, 0x02, 0x03 }, segments[1].Data);
+            Assert.Equal((ulong)1000, segments[2].Address);
+            Assert.Equal(new byte[] { 0x04 }, segments[2].Data);
         }
 
         [Fact]
         public void TestInfo()
         {
             var binFile = new BinFile();
-            binFile.AddBinary(new byte[] { 0x00 }, address: 0);
-            binFile.AddBinary(new byte[] { 0x01, 0x02 }, address: 5);
-            binFile.AddBinary(new byte[] { 0x03, 0x04, 0x05 }, address: 12);
+            string srecContent = File.ReadAllText(GetTestFilePath("empty_main.s19"));
+            binFile.AddSrec(srecContent);
 
-            string info = binFile.Info();
+            string expected = "Header:                  \"bincopy/empty_main.s19\"\n" +
+                              "Execution start address: 0x00400400\n" +
+                              "Data ranges:\n" +
+                              "\n" +
+                              "    0x00400238 - 0x004002b4 (124 bytes)\n" +
+                              "    0x004002b8 - 0x0040033e (134 bytes)\n" +
+                              "    0x00400340 - 0x004003c2 (130 bytes)\n" +
+                              "    0x004003d0 - 0x00400572 (418 bytes)\n" +
+                              "    0x00400574 - 0x0040057d (9 bytes)\n" +
+                              "    0x00400580 - 0x004006ac (300 bytes)\n" +
+                              "    0x00600e10 - 0x00601038 (552 bytes)\n";
 
-            Assert.Contains("Data ranges:", info);
-            Assert.Contains("0x00000000 - 0x00000001", info);
-            Assert.Contains("0x00000005 - 0x00000007", info);
-            Assert.Contains("0x0000000c - 0x0000000f", info);
+            Assert.Equal(expected, binFile.Info());
         }
 
         [Fact]
@@ -875,8 +877,7 @@ namespace BincopySharp.Tests
                 binFile.Add("S214400420ED044000E8B7FFFFFFF4660F1F440000EE\n" +
                            "invalid data");
             });
-            Assert.Contains("not starting with an 'S'", ex.Message);
-            Assert.Contains("invalid data", ex.Message);
+            Assert.Equal("Record 'invalid data' not starting with an 'S'", ex.Message);
 
             // Test 5: Intel HEX with invalid data after valid record
             binFile = new BinFile();
@@ -885,8 +886,7 @@ namespace BincopySharp.Tests
                 binFile.Add(":020000040040BA\n" +
                            "invalid data");
             });
-            Assert.Contains("not starting with a ':'", ex.Message);
-            Assert.Contains("invalid data", ex.Message);
+            Assert.Equal("Record 'invalid data' not starting with a ':'", ex.Message);
 
             // Test 6: Junk data
             Assert.Throws<UnsupportedFileFormatException>(() =>
@@ -1130,21 +1130,21 @@ namespace BincopySharp.Tests
             {
                 var chunks = binFile.Segments.Chunks(size: 4, alignment: 3).ToList();
             });
-            Assert.Contains("size 4 is not a multiple of alignment 3", ex.Message);
+            Assert.Equal("size 4 is not a multiple of alignment 3", ex.Message);
 
             // Size 4 is not a multiple of alignment 8
             ex = Assert.Throws<BincopyException>(() =>
             {
                 var chunks = binFile.Segments.Chunks(size: 4, alignment: 8).ToList();
             });
-            Assert.Contains("size 4 is not a multiple of alignment 8", ex.Message);
+            Assert.Equal("size 4 is not a multiple of alignment 8", ex.Message);
 
             // Padding must be a word value (size 1)
             ex = Assert.Throws<BincopyException>(() =>
             {
                 var chunks = binFile.Segments.Chunks(padding: new byte[] { 0xff, 0xff }).ToList();
             });
-            Assert.Contains("padding must be a word value (size 1)", ex.Message);
+            Assert.Equal("padding must be a word value (size 1), got 2 bytes", ex.Message);
         }
 
         [Fact]
@@ -1170,14 +1170,14 @@ namespace BincopySharp.Tests
             {
                 var result = binFile.Segments[0].Chunks(size: 4, alignment: 8).ToList();
             });
-            Assert.Contains("size 4 is not a multiple of alignment 8", ex.Message);
+            Assert.Equal("size 4 is not a multiple of alignment 8", ex.Message);
 
             // Missing segment
             ex = Assert.Throws<BincopyException>(() =>
             {
                 var result = binFile.Segments[1].Chunks(size: 4, alignment: 8).ToList();
             });
-            Assert.Contains("segment does not exist", ex.Message);
+            Assert.Equal("segment does not exist", ex.Message);
         }
 
         [Fact]
@@ -1262,7 +1262,7 @@ namespace BincopySharp.Tests
                 binFile.AsSrec(addressLengthBits: 40);
             });
             
-            Assert.Contains("Expected address length 16, 24 or 32, but got 40", ex.Message);
+            Assert.Equal("Expected address length 16, 24 or 32, but got 40 (Parameter 'AddressLengthBits')", ex.Message);
         }
 
         [Fact]
@@ -1503,8 +1503,7 @@ namespace BincopySharp.Tests
                 new BinFile(wordSizeBytes: 7);
             });
             
-            Assert.Contains("Word size must be 1, 2, 4, or 8 bytes", ex.Message);
-            Assert.Contains("but got 7", ex.Message);
+            Assert.Equal("Word size must be 1, 2, 4, or 8 bytes, but got 7 (Parameter 'wordSizeBytes')", ex.Message);
         }
 
         [Fact]
@@ -1645,10 +1644,10 @@ namespace BincopySharp.Tests
 
             binFile.AddBinary(new byte[] { 0x01, 0x02, 0x03, 0x04 }, address: 1);
 
-            // binfile[:] == b'\x01\x02\x03\x04'
+            // Get all data
             Assert.Equal(new byte[] { 0x01, 0x02, 0x03, 0x04 }, binFile.AsBinary());
 
-            // binfile[0] raises IndexError
+            // Address 0 is out of range
             Assert.ThrowsAny<Exception>(() => { var _ = binFile[0]; });
 
             Assert.Equal(1, binFile[1]);
@@ -1656,39 +1655,39 @@ namespace BincopySharp.Tests
             Assert.Equal(3, binFile[3]);
             Assert.Equal(4, binFile[4]);
 
-            // binfile[5] raises IndexError
+            // Address 5 is out of range
             Assert.ThrowsAny<Exception>(() => { var _ = binFile[5]; });
 
-            // binfile[3:5] == b'\x03\x04'
+            // Range [3, 5)
             Assert.Equal(new byte[] { 0x03, 0x04 }, binFile.AsBinary(minimumAddress: 3, maximumAddress: 5));
-            // binfile[3:6] == b'\x03\x04'
+            // Range [3, 6) — clipped to actual data
             Assert.Equal(new byte[] { 0x03, 0x04 }, binFile.AsBinary(minimumAddress: 3, maximumAddress: 6));
 
-            // binfile[1:3] = b'\x05\x06'
+            // Set range [1, 3)
             binFile.SetRange(1, new byte[] { 0x05, 0x06 });
             Assert.Equal(new byte[] { 0x05, 0x06, 0x03, 0x04 }, binFile.AsBinary());
 
-            // binfile[3:] = b'\x07\x08\x09'
+            // Set from address 3 onwards
             binFile.SetRange(3, new byte[] { 0x07, 0x08, 0x09 });
             Assert.Equal(new byte[] { 0x05, 0x06, 0x07, 0x08, 0x09 }, binFile.AsBinary());
 
-            // binfile[3:5] = b'\x0a\x0b'
+            // Set range [3, 5)
             binFile.SetRange(3, new byte[] { 0x0a, 0x0b });
             Assert.Equal(new byte[] { 0x05, 0x06, 0x0a, 0x0b, 0x09 }, binFile.AsBinary());
 
-            // binfile[2:] = b'\x0c'
+            // Set single byte at address 2
             binFile.SetRange(2, new byte[] { 0x0c });
             Assert.Equal(new byte[] { 0x05, 0x0c, 0x0a, 0x0b, 0x09 }, binFile.AsBinary());
 
-            // binfile[:] = b'\x01\x02\x03\x04\x05'
+            // Set all data from minimum address
             binFile.SetRange(binFile.MinimumAddress, new byte[] { 0x01, 0x02, 0x03, 0x04, 0x05 });
             Assert.Equal(new byte[] { 0x01, 0x02, 0x03, 0x04, 0x05 }, binFile.AsBinary());
 
-            // binfile[0] = 0
+            // Set single byte at address 0 (extends data)
             binFile[0] = 0;
             Assert.Equal(new byte[] { 0x00, 0x01, 0x02, 0x03, 0x04, 0x05 }, binFile.AsBinary());
 
-            // binfile[7] = 7
+            // Set single byte at address 7 (creates gap)
             binFile[7] = 7;
             Assert.Equal(new byte[] { 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0xff, 0x07 }, binFile.AsBinary());
             Assert.Equal(255, binFile[6]);
@@ -1709,34 +1708,33 @@ namespace BincopySharp.Tests
 
             binFile.AddBinary(new byte[] { 0x01, 0x02, 0x03, 0x04 }, address: 1);
 
-            // binfile[:] == b'\x01\x02\x03\x04'
+            // Get all data
             Assert.Equal(new byte[] { 0x01, 0x02, 0x03, 0x04 }, binFile.AsBinary());
 
-            // binfile[0] raises IndexError
+            // Address 0 is out of range
             Assert.ThrowsAny<Exception>(() => { var _ = binFile[0]; });
 
-            // In 16-bit mode, Python binfile[1] returns 0x0102 (word value)
-            // C# indexer returns byte at byte offset, so we use AsBinary for word-level access
+            // Word at address 1 = {0x01, 0x02}, word at address 2 = {0x03, 0x04}
             Assert.Equal(new byte[] { 0x01, 0x02 }, binFile.AsBinary(minimumAddress: 1, maximumAddress: 2));
             Assert.Equal(new byte[] { 0x03, 0x04 }, binFile.AsBinary(minimumAddress: 2, maximumAddress: 3));
 
-            // binfile[3] raises IndexError
+            // Address 3 is out of range
             Assert.ThrowsAny<Exception>(() => { var _ = binFile[3]; });
 
-            // binfile[1:3] == b'\x01\x02\x03\x04'
+            // Range [1, 3)
             Assert.Equal(new byte[] { 0x01, 0x02, 0x03, 0x04 }, binFile.AsBinary(minimumAddress: 1, maximumAddress: 3));
-            // binfile[1:4] == b'\x01\x02\x03\x04'
+            // Range [1, 4) — clipped to actual data
             Assert.Equal(new byte[] { 0x01, 0x02, 0x03, 0x04 }, binFile.AsBinary(minimumAddress: 1, maximumAddress: 4));
 
-            // binfile[1:2] = b'\x05\x06'
+            // Set range [1, 2)
             binFile.SetRange(1, new byte[] { 0x05, 0x06 });
             Assert.Equal(new byte[] { 0x05, 0x06, 0x03, 0x04 }, binFile.AsBinary());
 
-            // binfile[2:] = b'\x07\x08\x09\xa0'
+            // Set from address 2 onwards
             binFile.SetRange(2, new byte[] { 0x07, 0x08, 0x09, 0xa0 });
             Assert.Equal(new byte[] { 0x05, 0x06, 0x07, 0x08, 0x09, 0xa0 }, binFile.AsBinary());
 
-            // binfile[5] = 0x1718
+            // Set word at address 5 (creates gap)
             binFile.SetRange(5, new byte[] { 0x17, 0x18 });
             Assert.Equal(new byte[] { 0x05, 0x06, 0x07, 0x08, 0x09, 0xa0, 0xff, 0xff, 0x17, 0x18 }, binFile.AsBinary());
             Assert.Equal(new byte[] { 0xff, 0xff }, binFile.AsBinary(minimumAddress: 4, maximumAddress: 5));
@@ -1792,10 +1790,8 @@ namespace BincopySharp.Tests
             int size = 16;
             var chunks = hexfile.Segments.Chunks(size: size, alignment: align, padding: new byte[] { 0xff }).ToList();
             
-            // Assert: not any(c.address % align for c in chunks)
             Assert.All(chunks, c => Assert.Equal(0UL, c.Address % (ulong)align));
             
-            // Assert: not any(len(c) % align for c in chunks)
             Assert.All(chunks, c => Assert.Equal(0, c.Data.Length % align));
         }
 
@@ -1821,7 +1817,7 @@ namespace BincopySharp.Tests
         {
             string records = ":1000000010101010101010101010101010101010F0\n" +
                            ":10000A0010101010101010101010101010101010E6\n";
-            var hexfile = new BinFile(wordSizeBytes: 2);  // word_size_bits=16
+            var hexfile = new BinFile(wordSizeBytes: 2);
             hexfile.AddIhex(records);
             int align = 6;
             int size = 12;
@@ -1838,7 +1834,7 @@ namespace BincopySharp.Tests
         public void TestHeaderNoEncoding()
         {
             var binfile = new BinFile(headerEncoding: null);
-            binfile.AddFile("TestFiles/empty_main.s19");
+            binfile.AddFile(GetTestFilePath("empty_main.s19"));
 
             Assert.Equal(System.Text.Encoding.UTF8.GetBytes("bincopy/empty_main.s19"), (byte[])binfile.Header);
 
@@ -1849,7 +1845,7 @@ namespace BincopySharp.Tests
             Assert.Equal(new byte[] { 0x01, 0x80, 0x88, 0xaa, 0x90 }, (byte[])binfile.Header);
 
             var ex = Assert.Throws<ArgumentException>(() => binfile.Header = "bincopy/empty_main.s21");
-            Assert.Contains("expected a byte array", ex.Message);
+            Assert.Equal("expected a byte array, but got System.String", ex.Message);
         }
 
         [Fact]
@@ -1947,6 +1943,18 @@ namespace BincopySharp.Tests
 
             byte[] expected = File.ReadAllBytes("TestFiles/elf/keil.bin");
             Assert.Equal(expected, bf.AsBinary());
+        }
+
+        [Fact]
+        public void TestAddElfModifyOverwrite()
+        {
+            var bf = new BinFile();
+            bf.AddElfFile("TestFiles/elf.out");
+
+            byte[] data = "test"u8.ToArray();
+            ulong address = bf.MinimumAddress;
+            bf.AddBinary(data, address: address, overwrite: true);
+            Assert.Equal(data, bf.AsBinary(minimumAddress: address, maximumAddress: address + (ulong)data.Length));
         }
     }
 }

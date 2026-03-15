@@ -60,49 +60,7 @@ namespace BincopySharp.Utilities
         }
 
         /// <summary>
-        /// Parses a hexadecimal address string to a ulong.
-        /// </summary>
-        /// <param name="hexAddress">The hexadecimal address string (without 0x prefix).</param>
-        /// <returns>The parsed address as a ulong.</returns>
-        public static ulong ParseHexAddress(string hexAddress)
-        {
-            if (string.IsNullOrEmpty(hexAddress))
-            {
-                throw new ArgumentException("Hex address cannot be null or empty", nameof(hexAddress));
-            }
-
-            // Remove 0x prefix if present
-            if (hexAddress.StartsWith("0x", StringComparison.OrdinalIgnoreCase) ||
-                hexAddress.StartsWith("0X", StringComparison.OrdinalIgnoreCase))
-            {
-                hexAddress = hexAddress.Substring(2);
-            }
-
-            // Remove @ prefix if present (TI-TXT format)
-            if (hexAddress.StartsWith("@"))
-            {
-                hexAddress = hexAddress.Substring(1);
-            }
-
-            return Convert.ToUInt64(hexAddress, 16);
-        }
-
-        /// <summary>
-        /// Formats an address as a hexadecimal string with specified width.
-        /// </summary>
-        /// <param name="address">The address to format.</param>
-        /// <param name="width">The width in characters (e.g., 4 for 16-bit, 8 for 32-bit).</param>
-        /// <param name="uppercase">Whether to use uppercase letters. Default is true.</param>
-        /// <returns>The formatted hexadecimal address string.</returns>
-        public static string FormatAddress(ulong address, int width, bool uppercase = true)
-        {
-            string format = uppercase ? "X" : "x";
-            return address.ToString(format + width);
-        }
-
-        /// <summary>
         /// Converts a byte array in big-endian format to a 64-bit unsigned integer.
-        /// Equivalent to Python's int.from_bytes(bytes, 'big').
         /// </summary>
         /// <param name="bytes">The byte array in big-endian format.</param>
         /// <returns>The 64-bit unsigned integer value in native format.</returns>

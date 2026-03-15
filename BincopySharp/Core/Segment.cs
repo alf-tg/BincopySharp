@@ -1,7 +1,6 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.Linq;
 
 namespace BincopySharp
 {
@@ -21,7 +20,7 @@ namespace BincopySharp
         public ulong MaximumAddress { get; internal set; }
 
         /// <summary>
-        /// Gets the address of this segment in WORDS (EXACTLY like Python's @property address).
+        /// Gets the address of this segment in WORDS.
         /// </summary>
         public ulong Address => MinimumAddress / (ulong)WordSizeBytes;
 
@@ -41,8 +40,7 @@ namespace BincopySharp
         public ulong Length => (ulong)Data.Length;
 
         /// <summary>
-        /// Gets the number of words in the segment (EXACTLY like Python's __len__).
-        /// Python: return len(self.data) // self.word_size_bytes
+        /// Gets the number of words in the segment.
         /// </summary>
         public ulong WordCount => (ulong)Data.Length / (ulong)WordSizeBytes;
 
@@ -62,7 +60,6 @@ namespace BincopySharp
                     nameof(wordSizeBytes));
             }
 
-
             if (maximumAddress <= minimumAddress)
             {
                 throw new ArgumentException(
@@ -74,9 +71,8 @@ namespace BincopySharp
                 throw new ArgumentNullException(nameof(data));
             }
 
-            // EXACTLY like Python: NO validation of data length vs address range
-            // Python allows maximum_address to be larger than minimum_address + data.Length
-            // This is used in chunks() where max_address = address + size but data might be shorter
+            // No validation of data length vs address range — maximumAddress can exceed
+            // minimumAddress + data.Length (used in Chunks where max_address = address + size)
             MinimumAddress = minimumAddress;
             MaximumAddress = maximumAddress;
             Data = data;
@@ -85,7 +81,7 @@ namespace BincopySharp
 
         /// <summary>
         /// Splits the segment data into chunks of specified size with optional alignment and padding.
-        /// EXACTLY like Python: size and alignment are in WORDS.
+        /// Size and alignment are in WORDS.
         /// </summary>
         /// <param name="size">The size of each chunk in WORDS.</param>
         /// <param name="alignment">The alignment boundary in WORDS.</param>
@@ -103,7 +99,6 @@ namespace BincopySharp
                 throw new ArgumentException("Alignment must be positive", nameof(alignment));
             }
 
-            // EXACTLY like Python validation
             if ((size % alignment) != 0)
             {
                 throw new BincopyException($"size {size} is not a multiple of alignment {alignment}");
@@ -114,18 +109,13 @@ namespace BincopySharp
                 throw new BincopyException($"padding must be a word value (size {WordSizeBytes}), got {padding.Length} bytes");
             }
 
-            // EXACTLY like Python chunks():
-            // size and alignment are in WORDS, convert to BYTES
+            // Convert from WORDS to BYTES
             int sizeBytes = size * WordSizeBytes;
             int alignmentBytes = alignment * WordSizeBytes;
             ulong address = MinimumAddress;  // address in BYTES
             byte[] data = (byte[])Data.Clone();
 
-            // Python: Apply padding to first and final chunk, if padding is non-empty.
-            // align_offset = address % alignment
-            // address -= align_offset * bool(padding)
-            // data = align_offset // self.word_size_bytes * padding + data
-            // data += (alignment - len(data)) % alignment // self.word_size_bytes * padding
+            // Apply padding to first and final chunk if padding is non-empty
             if (padding != null && padding.Length > 0)
             {
                 int alignOffset = (int)(address % (ulong)alignmentBytes);
@@ -140,7 +130,6 @@ namespace BincopySharp
                 }
                 
                 // Append padding to align final chunk
-                // Python: data += (alignment - len(data)) % alignment // self.word_size_bytes * padding
                 int totalLength = prependPadding.Length + data.Length;
                 int remainder = totalLength % alignmentBytes;
                 int appendBytes = (remainder == 0) ? 0 : (alignmentBytes - remainder);
@@ -159,15 +148,9 @@ namespace BincopySharp
                 data = paddedData;
             }
 
-            // Python: chunk_offset = (address % alignment)
             int chunkOffset = (int)(address % (ulong)alignmentBytes);
 
-            // Python: First chunk may be non-aligned and shorter than `size` if padding is empty.
-            // if chunk_offset != 0:
-            //     first_chunk_size = (alignment - chunk_offset)
-            //     yield Segment(address, address + size, data[:first_chunk_size], self.word_size_bytes)
-            //     address += first_chunk_size
-            //     data = data[first_chunk_size:]
+            // First chunk may be non-aligned and shorter than size if padding is empty
             if (chunkOffset != 0)
             {
                 int firstChunkSize = alignmentBytes - chunkOffset;
@@ -185,8 +168,6 @@ namespace BincopySharp
                 data = remainingData;
             }
 
-            // Python: for offset in range(0, len(data), size):
-            //             yield Segment(address + offset, address + offset + size, data[offset:offset + size], self.word_size_bytes)
             int offset = 0;
             while (offset < data.Length)
             {
@@ -194,7 +175,7 @@ namespace BincopySharp
                 byte[] chunk = new byte[chunkSize];
                 Array.Copy(data, offset, chunk, 0, chunkSize);
 
-                // Return address in WORDS (like Python's Segment.address property)
+                // Return address in WORDS
                 yield return (address / (ulong)WordSizeBytes, chunk);
 
                 offset += sizeBytes;
@@ -230,18 +211,25 @@ namespace BincopySharp
 
                 if (overlapEnd > overlapStart)
                 {
-                    throw new AddDataException((int)overlapStart);
+                    throw new AddDataException(overlapStart);
                 }
             }
 
-            // Calculate overlap and copy data
-            // Use long to handle large address differences safely
-            long sourceOffsetLong = Math.Max(0, (long)MinimumAddress - (long)minimumAddress);
-            long destOffsetLong = Math.Max(0, (long)minimumAddress - (long)MinimumAddress);
-            
-            // Convert to int for array indexing (arrays are limited to int.MaxValue)
-            int sourceOffset = (int)sourceOffsetLong;
-            int destOffset = (int)destOffsetLong;
+            // Calculate overlap and copy data using ulong arithmetic (no signed casts)
+            int sourceOffset;
+            int destOffset;
+
+            if (MinimumAddress > minimumAddress)
+            {
+                sourceOffset = (int)(MinimumAddress - minimumAddress);
+                destOffset = 0;
+            }
+            else
+            {
+                sourceOffset = 0;
+                destOffset = (int)(minimumAddress - MinimumAddress);
+            }
+
             int copyLength = Math.Min(
                 data.Length - sourceOffset,
                 Data.Length - destOffset);
@@ -251,7 +239,6 @@ namespace BincopySharp
                 Array.Copy(data, sourceOffset, Data, destOffset, copyLength);
             }
         }
-
 
         /// <summary>
         /// Removes data from this segment, potentially splitting it into two segments.
@@ -277,7 +264,7 @@ namespace BincopySharp
             if (minimumAddress > MinimumAddress && maximumAddress >= MaximumAddress)
             {
                 ulong newMaxAddress = minimumAddress;
-                ulong newLength = (newMaxAddress - MinimumAddress) / (ulong)WordSizeBytes;
+                ulong newLength = newMaxAddress - MinimumAddress;
                 byte[] newData = new byte[newLength];
                 Array.Copy(Data, 0, newData, 0, (long)newLength);
                 return (new Segment(MinimumAddress, newMaxAddress, newData, WordSizeBytes), null);
@@ -287,7 +274,7 @@ namespace BincopySharp
             if (minimumAddress <= MinimumAddress && maximumAddress < MaximumAddress)
             {
                 ulong newMinAddress = maximumAddress;
-                ulong offset = (newMinAddress - MinimumAddress) / (ulong)WordSizeBytes;
+                ulong offset = newMinAddress - MinimumAddress;
                 ulong newLength = (ulong)Data.Length - offset;
                 byte[] newData = new byte[newLength];
                 Array.Copy(Data, (long)offset, newData, 0, (long)newLength);
@@ -296,12 +283,12 @@ namespace BincopySharp
 
             // Middle removal - split into two segments
             ulong leftMaxAddress = minimumAddress;
-            ulong leftLength = (leftMaxAddress - MinimumAddress) / (ulong)WordSizeBytes;
+            ulong leftLength = leftMaxAddress - MinimumAddress;
             byte[] leftData = new byte[leftLength];
             Array.Copy(Data, 0, leftData, 0, (long)leftLength);
 
             ulong rightMinAddress = maximumAddress;
-            ulong rightOffset = (rightMinAddress - MinimumAddress) / (ulong)WordSizeBytes;
+            ulong rightOffset = rightMinAddress - MinimumAddress;
             ulong rightLength = (ulong)Data.Length - rightOffset;
             byte[] rightData = new byte[rightLength];
             Array.Copy(Data, (long)rightOffset, rightData, 0, (long)rightLength);

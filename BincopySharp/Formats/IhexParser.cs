@@ -98,8 +98,7 @@ namespace BincopySharp.Formats
                     }
                     else if (type == IHEX_END_OF_FILE)
                     {
-                        // End of file record
-                        break;
+                        // End of file record - ignore and continue
                     }
                     else if (type == IHEX_EXTENDED_SEGMENT_ADDRESS)
                     {

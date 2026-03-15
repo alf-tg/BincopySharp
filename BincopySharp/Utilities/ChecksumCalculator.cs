@@ -38,16 +38,5 @@ namespace BincopySharp.Utilities
             return (byte)checksum;
         }
 
-        /// <summary>
-        /// Validates the checksum of an Intel HEX record.
-        /// </summary>
-        /// <param name="hexString">The hex string (without : prefix and checksum).</param>
-        /// <param name="expectedChecksum">The expected checksum value.</param>
-        /// <returns>True if checksum is valid, false otherwise.</returns>
-        public static bool ValidateIhexChecksum(string hexString, byte expectedChecksum)
-        {
-            byte calculatedChecksum = CalculateIhexChecksum(hexString);
-            return calculatedChecksum == expectedChecksum;
-        }
     }
 }
