@@ -9,14 +9,14 @@ using BincopySharp;
 namespace BincopySharp.Tests
 {
     /// <summary>
-    /// Port of test_bincopy.py from Python bincopy library version 20.1.1.
-    /// Each test maintains 1:1 mapping with original Python tests.
+    /// Port 1:1 de los tests de test_bincopy.py de la biblioteca Python bincopy v20.1.1.
+    /// Cada test mantiene mapping exacto con el test original de Python.
     /// </summary>
-    public class BincopyTests
+    public class PythonPortTests
     {
         private readonly string _testFilesPath;
 
-        public BincopyTests()
+        public PythonPortTests()
         {
             _testFilesPath = Path.Combine(Directory.GetCurrentDirectory(), "TestFiles");
         }
@@ -68,7 +68,7 @@ namespace BincopySharp.Tests
                 binFile.AddSrecFile(GetTestFilePath("bad_crc.s19"));
             });
             
-            Assert.Equal("expected crc '25' in record S2144002640000000002000000060000001800000022, but got '22'", ex.Message);
+            Assert.Equal("Expected crc '25' in record S2144002640000000002000000060000001800000022, but got '22'", ex.Message);
         }
 
         [Fact]
@@ -94,14 +94,14 @@ namespace BincopySharp.Tests
             {
                 binFile.AddSrec("S.0200FF");
             });
-            Assert.Equal("expected record type 0..3 or 5..9, but got '.'", exBadType.Message);
+            Assert.Equal("Expected record type 0..3 or 5..9, but got '.'", exBadType.Message);
 
             // Bad CRC
             var ex = Assert.ThrowsAny<BincopyException>(() =>
             {
                 binFile.AddSrec("S1020011");
             });
-            Assert.Equal("expected crc 'FD' in record S1020011, but got '11'", ex.Message);
+            Assert.Equal("Expected crc 'FD' in record S1020011, but got '11'", ex.Message);
         }
 
         [Fact]
@@ -144,14 +144,14 @@ namespace BincopySharp.Tests
         {
             var testCases = new[]
             {
-                ("bad_ti_txt_address_value.txt", "bad section address"),
-                ("bad_ti_txt_bad_q.txt", "bad file terminator"),
-                ("bad_ti_txt_data_value.txt", "bad data"),
-                ("bad_ti_txt_record_short.txt", "missing section address"),
-                ("bad_ti_txt_record_long.txt", "bad line length"),
-                ("bad_ti_txt_no_offset.txt", "missing section address"),
-                ("bad_ti_txt_no_q.txt", "missing file terminator"),
-                ("bad_ti_txt_blank_line.txt", "bad line length")
+                ("bad_ti_txt_address_value.txt", "Bad section address"),
+                ("bad_ti_txt_bad_q.txt", "Bad file terminator"),
+                ("bad_ti_txt_data_value.txt", "Bad data"),
+                ("bad_ti_txt_record_short.txt", "Missing section address"),
+                ("bad_ti_txt_record_long.txt", "Bad line length"),
+                ("bad_ti_txt_no_offset.txt", "Missing section address"),
+                ("bad_ti_txt_no_q.txt", "Missing file terminator"),
+                ("bad_ti_txt_blank_line.txt", "Bad line length")
             };
 
             foreach (var (filename, expectedMessage) in testCases)
@@ -294,7 +294,7 @@ namespace BincopySharp.Tests
                 binFile.AsIhex(addressLengthBits: 16);
             });
 
-            Assert.Equal("cannot address more than 64 kB in I8HEX files (16 bits addresses)", ex.Message);
+            Assert.Equal("Cannot address more than 64 kB in I8HEX files (16 bits addresses)", ex.Message);
         }
 
         [Fact]
@@ -361,7 +361,7 @@ namespace BincopySharp.Tests
                 binFile.AsIhex(addressLengthBits: 24);
             });
 
-            Assert.Equal("cannot address more than 1 MB in I16HEX files (20 bits addresses)", ex.Message);
+            Assert.Equal("Cannot address more than 1 MB in I16HEX files (20 bits addresses)", ex.Message);
         }
 
         [Fact]
@@ -411,7 +411,7 @@ namespace BincopySharp.Tests
                 binFile.AsIhex(addressLengthBits: 32);
             });
 
-            Assert.Equal("cannot address more than 4 GB in I32HEX files (32 bits addresses)", ex.Message);
+            Assert.Equal("Cannot address more than 4 GB in I32HEX files (32 bits addresses)", ex.Message);
         }
 
         [Fact]
@@ -721,7 +721,7 @@ namespace BincopySharp.Tests
             {
                 binFile.Exclude(4, 2);
             });
-            Assert.Equal("bad address range", ex.Message);
+            Assert.Equal("Bad address range", ex.Message);
 
             binFile.Exclude(2, 2);
             Assert.Equal(Encoding.ASCII.GetBytes("111111"), binFile.AsBinary());
@@ -792,7 +792,7 @@ namespace BincopySharp.Tests
         [Fact]
         public void TestBinary16()
         {
-            var binFile = new BinFile(wordSizeBytes: 2);  // 16 bits = 2 bytes
+            var binFile = new BinFile(wordSizeBits: 16);
             binFile.AddBinary(new byte[] { 0x35, 0x30, 0x36, 0x30, 0x37, 0x30 }, address: 5);
             binFile.AddBinary(new byte[] { 0x61, 0x30, 0x62, 0x30, 0x63, 0x30 }, address: 10);
 
@@ -1130,21 +1130,21 @@ namespace BincopySharp.Tests
             {
                 var chunks = binFile.Segments.Chunks(size: 4, alignment: 3).ToList();
             });
-            Assert.Equal("size 4 is not a multiple of alignment 3", ex.Message);
+            Assert.Equal("Size 4 is not a multiple of alignment 3", ex.Message);
 
             // Size 4 is not a multiple of alignment 8
             ex = Assert.Throws<BincopyException>(() =>
             {
                 var chunks = binFile.Segments.Chunks(size: 4, alignment: 8).ToList();
             });
-            Assert.Equal("size 4 is not a multiple of alignment 8", ex.Message);
+            Assert.Equal("Size 4 is not a multiple of alignment 8", ex.Message);
 
             // Padding must be a word value (size 1)
             ex = Assert.Throws<BincopyException>(() =>
             {
                 var chunks = binFile.Segments.Chunks(padding: new byte[] { 0xff, 0xff }).ToList();
             });
-            Assert.Equal("padding must be a word value (size 1), got 2 bytes", ex.Message);
+            Assert.Equal("Padding must be a word value (size 1), got 2 bytes", ex.Message);
         }
 
         [Fact]
@@ -1170,14 +1170,14 @@ namespace BincopySharp.Tests
             {
                 var result = binFile.Segments[0].Chunks(size: 4, alignment: 8).ToList();
             });
-            Assert.Equal("size 4 is not a multiple of alignment 8", ex.Message);
+            Assert.Equal("Size 4 is not a multiple of alignment 8", ex.Message);
 
             // Missing segment
             ex = Assert.Throws<BincopyException>(() =>
             {
                 var result = binFile.Segments[1].Chunks(size: 4, alignment: 8).ToList();
             });
-            Assert.Equal("segment does not exist", ex.Message);
+            Assert.Equal("Segment does not exist", ex.Message);
         }
 
         [Fact]
@@ -1310,7 +1310,7 @@ namespace BincopySharp.Tests
         [Fact]
         public void TestWordSize()
         {
-            var binFile = new BinFile(wordSizeBytes: 2);  // 16 bits = 2 bytes
+            var binFile = new BinFile(wordSizeBits: 16);
             
             string in16BitsWord = File.ReadAllText(GetTestFilePath("in_16bits_word.s19"));
             binFile.AddSrec(in16BitsWord);
@@ -1322,7 +1322,7 @@ namespace BincopySharp.Tests
         [Fact]
         public void TestWordSizeDefaultPadding()
         {
-            var binFile = new BinFile(wordSizeBytes: 2);  // 16 bits = 2 bytes
+            var binFile = new BinFile(wordSizeBits: 16);
             
             string inHex = File.ReadAllText(GetTestFilePath("in_16bits_word_padding.hex"));
             binFile.AddIhex(inHex);
@@ -1419,7 +1419,7 @@ namespace BincopySharp.Tests
             Assert.Equal("bincopy/empty_main.s20", binFile.Header);
         }
 
-        [Fact(Skip = "Performance test - takes too long")]
+        [Fact]
         public void TestPerformance()
         {
             var binFile = new BinFile();
@@ -1441,12 +1441,16 @@ namespace BincopySharp.Tests
             
             string ihex = binFile.AsIhex();
             string srec = binFile.AsSrec();
+            string tiTxt = binFile.AsTiTxt();
             
             binFile = new BinFile();
             binFile.AddIhex(ihex);
             
             binFile = new BinFile();
             binFile.AddSrec(srec);
+            
+            binFile = new BinFile();
+            binFile.AddTiTxt(tiTxt);
         }
 
         [Fact]
@@ -1459,7 +1463,7 @@ namespace BincopySharp.Tests
             
             Assert.Equal(in8Vmem, binFile.AsVerilogVmem());
             
-            binFile = new BinFile(wordSizeBytes: 4);  // 32 bits = 4 bytes
+            binFile = new BinFile(wordSizeBits: 32);
             
             string in32Vmem = File.ReadAllText(GetTestFilePath("in-32.vmem"));
             binFile.AddVerilogVmem(in32Vmem);
@@ -1479,8 +1483,8 @@ namespace BincopySharp.Tests
         public void TestSegmentLen()
         {
             int length = 0x100;
-            int wordSizeBytes = 1;
-            var segment = new Segment(0, (ulong)length, new byte[length], wordSizeBytes);
+            int wordSizeBits = 8;
+            var segment = new Segment(0, (ulong)length, new byte[length], wordSizeBits);
 
             Assert.Equal((ulong)length, segment.WordCount);
         }
@@ -1489,8 +1493,8 @@ namespace BincopySharp.Tests
         public void TestSegmentLen16()
         {
             int length = 0x100;
-            int wordSizeBytes = 2;
-            var segment = new Segment(0, (ulong)length, new byte[length * wordSizeBytes], wordSizeBytes);
+            int wordSizeBits = 16;
+            var segment = new Segment(0, (ulong)length, new byte[length * (wordSizeBits / 8)], wordSizeBits);
             
             Assert.Equal((ulong)length, segment.WordCount);
         }
@@ -1500,10 +1504,10 @@ namespace BincopySharp.Tests
         {
             var ex = Assert.Throws<ArgumentException>(() =>
             {
-                new BinFile(wordSizeBytes: 7);
+                new BinFile(wordSizeBits: 7);
             });
             
-            Assert.Equal("Word size must be 1, 2, 4, or 8 bytes, but got 7 (Parameter 'wordSizeBytes')", ex.Message);
+            Assert.Equal("Word size must be 8, 16, 32, or 64 bits, but got 7 (Parameter 'wordSizeBits')", ex.Message);
         }
 
         [Fact]
@@ -1704,7 +1708,7 @@ namespace BincopySharp.Tests
         [Fact]
         public void TestSetGetItem16()
         {
-            var binFile = new BinFile(wordSizeBytes: 2);
+            var binFile = new BinFile(wordSizeBits: 16);
 
             binFile.AddBinary(new byte[] { 0x01, 0x02, 0x03, 0x04 }, address: 1);
 
@@ -1744,7 +1748,7 @@ namespace BincopySharp.Tests
         [Fact]
         public void TestWordSizeCustomPadding()
         {
-            var binFile = new BinFile(wordSizeBytes: 2);  // 16 bits = 2 bytes
+            var binFile = new BinFile(wordSizeBits: 16);
             
             string inHex = File.ReadAllText(GetTestFilePath("in_16bits_word_padding.hex"));
             binFile.AddIhex(inHex);
@@ -1756,7 +1760,7 @@ namespace BincopySharp.Tests
         [Fact]
         public void TestFillWordSize16()
         {
-            var binFile = new BinFile(wordSizeBytes: 2);  // 16 bits = 2 bytes
+            var binFile = new BinFile(wordSizeBits: 16);
             binFile.AddBinary(new byte[] { 0x01, 0x02 }, address: 0);
             binFile.AddBinary(new byte[] { 0x03, 0x04 }, address: 2);
             binFile.AddBinary(new byte[] { 0x05, 0x06 }, address: 5);
@@ -1817,7 +1821,7 @@ namespace BincopySharp.Tests
         {
             string records = ":1000000010101010101010101010101010101010F0\n" +
                            ":10000A0010101010101010101010101010101010E6\n";
-            var hexfile = new BinFile(wordSizeBytes: 2);
+            var hexfile = new BinFile(wordSizeBits: 16);
             hexfile.AddIhex(records);
             int align = 6;
             int size = 12;
@@ -1845,7 +1849,7 @@ namespace BincopySharp.Tests
             Assert.Equal(new byte[] { 0x01, 0x80, 0x88, 0xaa, 0x90 }, (byte[])binfile.Header);
 
             var ex = Assert.Throws<ArgumentException>(() => binfile.Header = "bincopy/empty_main.s21");
-            Assert.Equal("expected a byte array, but got System.String", ex.Message);
+            Assert.Equal("Expected a byte array, but got System.String", ex.Message);
         }
 
         [Fact]
