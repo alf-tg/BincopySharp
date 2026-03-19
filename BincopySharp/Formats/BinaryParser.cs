@@ -30,12 +30,13 @@ namespace BincopySharp.Formats
         public ParseResult ParseBinary(byte[] data, ulong address, int wordSizeBytes)
         {
             var result = new ParseResult();
+            int wordSizeBits = wordSizeBytes * 8;
 
             if (data != null && data.Length > 0)
             {
                 address *= (ulong)wordSizeBytes;
                 ulong maximumAddress = address + (ulong)data.Length;
-                var segment = new Segment(address, maximumAddress, data, wordSizeBytes);
+                var segment = new Segment(address, maximumAddress, data, wordSizeBits);
                 result.Segments.Add(segment);
             }
 

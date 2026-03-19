@@ -24,16 +24,16 @@ namespace BincopySharp.Formats
         /// </summary>
         public string Serialize(Segments segments, SerializerOptions options)
         {
-            // Convert all segments to word size 1
-            var convertedSegments = new Segments(1);
+            // Convert all segments to word size 8 bits (1 byte)
+            var convertedSegments = new Segments(8);
             foreach (var segment in segments)
             {
-                // Create new segment with word size 1
+                // Create new segment with word size 8 bits
                 var newSegment = new Segment(
                     segment.MinimumAddress,
                     segment.MaximumAddress,
                     segment.Data,
-                    1
+                    8
                 );
                 convertedSegments.Add(newSegment, overwrite: false);
             }

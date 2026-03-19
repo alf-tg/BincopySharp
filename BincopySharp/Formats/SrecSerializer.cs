@@ -22,25 +22,39 @@ namespace BincopySharp.Formats
                 lines.Add(headerRecord);
             }
 
-            // Determine data record type based on address length
+            // Determine data record type and max address based on address length
             char dataType;
+            ulong maxAddress;
             if (options.AddressLengthBits == 16)
             {
                 dataType = '1';
+                maxAddress = 0xFFFF;
             }
             else if (options.AddressLengthBits == 24)
             {
                 dataType = '2';
+                maxAddress = 0xFFFFFF;
             }
             else if (options.AddressLengthBits == 32)
             {
                 dataType = '3';
+                maxAddress = 0xFFFFFFFF;
             }
             else
             {
                 throw new ArgumentException(
                     $"Expected address length 16, 24 or 32, but got {options.AddressLengthBits}",
                     nameof(options.AddressLengthBits));
+            }
+
+            // Validate that all segment addresses fit in the address range
+            foreach (var segment in segments)
+            {
+                if (segment.MaximumAddress - 1 > maxAddress)
+                {
+                    throw new BincopyException(
+                        $"Cannot address more than 0x{maxAddress:X} in SREC S{dataType} records ({options.AddressLengthBits} bits addresses)");
+                }
             }
 
             // Add data records
@@ -69,6 +83,12 @@ namespace BincopySharp.Formats
             // Add execution start address record (S7, S8, or S9) if present
             if (options.ExecutionStartAddress.HasValue)
             {
+                if (options.ExecutionStartAddress.Value > maxAddress)
+                {
+                    throw new BincopyException(
+                        $"Cannot address more than 0x{maxAddress:X} in SREC S{dataType} records ({options.AddressLengthBits} bits addresses)");
+                }
+
                 char startType;
                 if (dataType == '1')
                 {

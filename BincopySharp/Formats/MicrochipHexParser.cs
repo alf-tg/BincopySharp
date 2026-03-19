@@ -38,16 +38,16 @@ namespace BincopySharp.Formats
             // Parse as Intel HEX with word size 1
             var result = _ihexParser.Parse(data);
 
-            // Convert all segments to word size 2
+            // Convert all segments to word size 16 bits (2 bytes)
             var convertedSegments = new List<Segment>();
             foreach (var segment in result.Segments)
             {
-                // Create new segment with word size 2
+                // Create new segment with word size 16 bits
                 var newSegment = new Segment(
                     segment.MinimumAddress,
                     segment.MaximumAddress,
                     segment.Data,
-                    2
+                    16
                 );
                 convertedSegments.Add(newSegment);
             }

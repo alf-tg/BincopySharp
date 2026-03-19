@@ -93,7 +93,7 @@ namespace BincopySharp.Formats
             if (address > 0xFFFFFFFFUL)
             {
                 throw new BincopyException(
-                    "cannot address more than 4 GB in I32HEX files (32 bits addresses)");
+                    "Cannot address more than 4 GB in I32HEX files (32 bits addresses)");
             }
 
             ulong addressUpper16Bits = (address >> 16);
@@ -117,7 +117,7 @@ namespace BincopySharp.Formats
             if (address > 16 * 0xFFFF + 0xFFFF)
             {
                 throw new BincopyException(
-                    "cannot address more than 1 MB in I16HEX files (20 bits addresses)");
+                    "Cannot address more than 1 MB in I16HEX files (20 bits addresses)");
             }
 
             ulong addressLower = address - 16 * extendedSegmentAddress;
@@ -147,7 +147,7 @@ namespace BincopySharp.Formats
             if (address > 0xFFFF)
             {
                 throw new BincopyException(
-                    "cannot address more than 64 kB in I8HEX files (16 bits addresses)");
+                    "Cannot address more than 64 kB in I8HEX files (16 bits addresses)");
             }
         }
 

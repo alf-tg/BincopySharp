@@ -39,6 +39,7 @@ namespace BincopySharp.Formats
         public ParseResult Parse(string data, int wordSizeBytes)
         {
             var result = new ParseResult();
+            int wordSizeBits = wordSizeBytes * 8;
 
             // Remove comments (// style)
             data = RemoveComments(data);
@@ -98,7 +99,7 @@ namespace BincopySharp.Formats
                             address.Value,
                             address.Value + (ulong)chunk.Count,
                             chunk.ToArray(),
-                            wordSizeBytes);
+                            wordSizeBits);
                         result.Segments.Add(segment);
                     }
 
@@ -136,7 +137,7 @@ namespace BincopySharp.Formats
                     address.Value,
                     address.Value + (ulong)chunk.Count,
                     chunk.ToArray(),
-                    wordSizeBytes);
+                    wordSizeBits);
                 result.Segments.Add(segment);
             }
 

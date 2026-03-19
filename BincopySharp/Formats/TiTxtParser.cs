@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using BincopySharp.Utilities;
 
@@ -39,8 +40,14 @@ namespace BincopySharp.Formats
         public ParseResult Parse(string data, int wordSizeBytes)
         {
             var result = new ParseResult();
+            int wordSizeBits = wordSizeBytes * 8;
             ulong? address = null;
             bool eofFound = false;
+
+            // Accumulator for merging consecutive data lines into a single segment
+            ulong accumMinAddr = 0;
+            ulong accumMaxAddr = 0;
+            List<byte>? accumData = null;
 
             using (var reader = new StringReader(data))
             {
@@ -50,14 +57,14 @@ namespace BincopySharp.Formats
                     // Abort if data is found after end of file
                     if (eofFound)
                     {
-                        throw new BincopyException("bad file terminator");
+                        throw new BincopyException("Bad file terminator");
                     }
 
                     line = line.Trim();
 
                     if (line.Length < 1)
                     {
-                        throw new BincopyException("bad line length");
+                        throw new BincopyException("Bad line length");
                     }
 
                     if (line[0] == 'q')
@@ -66,6 +73,13 @@ namespace BincopySharp.Formats
                     }
                     else if (line[0] == '@')
                     {
+                        // Flush accumulator before new address directive
+                        if (accumData != null)
+                        {
+                            result.Segments.Add(new Segment(accumMinAddr, accumMaxAddr, accumData.ToArray(), wordSizeBits));
+                            accumData = null;
+                        }
+
                         // Address directive
                         try
                         {
@@ -73,7 +87,7 @@ namespace BincopySharp.Formats
                         }
                         catch
                         {
-                            throw new BincopyException("bad section address");
+                            throw new BincopyException("Bad section address");
                         }
                     }
                     else
@@ -86,28 +100,40 @@ namespace BincopySharp.Formats
                         }
                         catch
                         {
-                            throw new BincopyException("bad data");
+                            throw new BincopyException("Bad data");
                         }
 
                         int size = lineData.Length;
 
-                        // Check that there are correct number of bytes per line
-                        // There should be TI_TXT_BYTES_PER_LINE. Only exception is
-                        // last line of section which may be shorter.
                         if (size > TI_TXT_BYTES_PER_LINE)
                         {
-                            throw new BincopyException("bad line length");
+                            throw new BincopyException("Bad line length");
                         }
 
                         if (!address.HasValue)
                         {
-                            throw new BincopyException("missing section address");
+                            throw new BincopyException("Missing section address");
                         }
 
                         ulong segmentAddress = address.Value;
                         ulong segmentMaxAddress = segmentAddress + (ulong)size;
-                        var segment = new Segment(segmentAddress, segmentMaxAddress, lineData, wordSizeBytes);
-                        result.Segments.Add(segment);
+
+                        // Accumulate consecutive lines into one segment
+                        if (accumData != null && segmentAddress == accumMaxAddr)
+                        {
+                            accumData.AddRange(lineData);
+                            accumMaxAddr = segmentMaxAddress;
+                        }
+                        else
+                        {
+                            if (accumData != null)
+                            {
+                                result.Segments.Add(new Segment(accumMinAddr, accumMaxAddr, accumData.ToArray(), wordSizeBits));
+                            }
+                            accumData = new List<byte>(lineData);
+                            accumMinAddr = segmentAddress;
+                            accumMaxAddr = segmentMaxAddress;
+                        }
 
                         if (size == TI_TXT_BYTES_PER_LINE)
                         {
@@ -121,9 +147,15 @@ namespace BincopySharp.Formats
                 }
             }
 
+            // Flush remaining accumulator
+            if (accumData != null)
+            {
+                result.Segments.Add(new Segment(accumMinAddr, accumMaxAddr, accumData.ToArray(), wordSizeBits));
+            }
+
             if (!eofFound)
             {
-                throw new BincopyException("missing file terminator");
+                throw new BincopyException("Missing file terminator");
             }
 
             return result;

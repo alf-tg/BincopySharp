@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using BincopySharp.Utilities;
 
@@ -61,6 +62,12 @@ namespace BincopySharp.Formats
             }
 
             var result = new ParseResult();
+            int wordSizeBits = wordSizeBytes * 8;
+
+            // Accumulator for merging consecutive data records into a single segment
+            ulong accumMinAddr = 0;
+            ulong accumMaxAddr = 0;
+            List<byte>? accumData = null;
 
             using (var reader = new StringReader(data))
             {
@@ -87,8 +94,22 @@ namespace BincopySharp.Formats
                         // S1, S2, S3 records contain data
                         ulong segmentAddress = address * (ulong)wordSizeBytes;
                         ulong segmentMaxAddress = segmentAddress + (ulong)size;
-                        var segment = new Segment(segmentAddress, segmentMaxAddress, recordData, wordSizeBytes);
-                        result.Segments.Add(segment);
+
+                        if (accumData != null && segmentAddress == accumMaxAddr)
+                        {
+                            accumData.AddRange(recordData);
+                            accumMaxAddr = segmentMaxAddress;
+                        }
+                        else
+                        {
+                            if (accumData != null)
+                            {
+                                result.Segments.Add(new Segment(accumMinAddr, accumMaxAddr, accumData.ToArray(), wordSizeBits));
+                            }
+                            accumData = new List<byte>(recordData);
+                            accumMinAddr = segmentAddress;
+                            accumMaxAddr = segmentMaxAddress;
+                        }
                     }
                     else if (type == '7' || type == '8' || type == '9')
                     {
@@ -97,6 +118,12 @@ namespace BincopySharp.Formats
                     }
                     // S5 and S6 are record count records, we ignore them
                 }
+            }
+
+            // Flush remaining accumulator
+            if (accumData != null)
+            {
+                result.Segments.Add(new Segment(accumMinAddr, accumMaxAddr, accumData.ToArray(), wordSizeBits));
             }
 
             return result;
@@ -156,7 +183,7 @@ namespace BincopySharp.Formats
             }
             else
             {
-                throw new InvalidRecordException(record, $"expected record type 0..3 or 5..9, but got '{type}'");
+                throw new InvalidRecordException(record, $"Expected record type 0..3 or 5..9, but got '{type}'");
             }
 
             int dataOffset = 1 + width;
@@ -186,7 +213,7 @@ namespace BincopySharp.Formats
             {
                 throw new InvalidRecordException(
                     record,
-                    $"expected crc '{expectedCrc:X2}' in record {record}, but got '{actualCrc:X2}'",
+                    $"Expected crc '{expectedCrc:X2}' in record {record}, but got '{actualCrc:X2}'",
                     expectedCrc,
                     actualCrc);
             }

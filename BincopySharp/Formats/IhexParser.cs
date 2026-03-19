@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using BincopySharp.Utilities;
 
@@ -69,8 +70,14 @@ namespace BincopySharp.Formats
             }
 
             var result = new ParseResult();
+            int wordSizeBits = wordSizeBytes * 8;
             ulong extendedSegmentAddress = 0;
             ulong extendedLinearAddress = 0;
+
+            // Accumulator for merging consecutive data records into a single segment
+            ulong accumMinAddr = 0;
+            ulong accumMaxAddr = 0;
+            List<byte>? accumData = null;
 
             using (var reader = new StringReader(data))
             {
@@ -93,8 +100,22 @@ namespace BincopySharp.Formats
                         ulong fullAddress = address + extendedSegmentAddress + extendedLinearAddress;
                         ulong segmentAddress = fullAddress * (ulong)wordSizeBytes;
                         ulong segmentMaxAddress = segmentAddress + (ulong)size;
-                        var segment = new Segment(segmentAddress, segmentMaxAddress, recordData, wordSizeBytes);
-                        result.Segments.Add(segment);
+
+                        if (accumData != null && segmentAddress == accumMaxAddr)
+                        {
+                            accumData.AddRange(recordData);
+                            accumMaxAddr = segmentMaxAddress;
+                        }
+                        else
+                        {
+                            if (accumData != null)
+                            {
+                                result.Segments.Add(new Segment(accumMinAddr, accumMaxAddr, accumData.ToArray(), wordSizeBits));
+                            }
+                            accumData = new List<byte>(recordData);
+                            accumMinAddr = segmentAddress;
+                            accumMaxAddr = segmentMaxAddress;
+                        }
                     }
                     else if (type == IHEX_END_OF_FILE)
                     {
@@ -127,6 +148,12 @@ namespace BincopySharp.Formats
                         throw new InvalidRecordException(line, $"Expected type 0..5 in record {line}, but got {type}");
                     }
                 }
+            }
+
+            // Flush remaining accumulator
+            if (accumData != null)
+            {
+                result.Segments.Add(new Segment(accumMinAddr, accumMaxAddr, accumData.ToArray(), wordSizeBits));
             }
 
             return result;

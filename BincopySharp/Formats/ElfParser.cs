@@ -33,6 +33,7 @@ namespace BincopySharp.Formats
         public ParseResult ParseElf(byte[] data, int wordSizeBytes)
         {
             var result = new ParseResult();
+            int wordSizeBits = wordSizeBytes * 8;
 
             using (var stream = new MemoryStream(data))
             {
@@ -129,7 +130,7 @@ namespace BincopySharp.Formats
                             if (sectionData != null && sectionData.Length > 0)
                             {
                                 ulong maxAddress = sectionAddress + (ulong)sectionData.Length;
-                                var seg = new Segment(sectionAddress, maxAddress, sectionData, wordSizeBytes);
+                                var seg = new Segment(sectionAddress, maxAddress, sectionData, wordSizeBits);
                                 result.Segments.Add(seg);
                             }
                         }

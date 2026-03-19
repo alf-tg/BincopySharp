@@ -14,9 +14,14 @@ namespace BincopySharp
         private int _currentSegmentIndex;
 
         /// <summary>
-        /// Gets or sets the word size in bytes for all segments in this collection.
+        /// Gets or sets the word size in bits for all segments in this collection.
         /// </summary>
-        public int WordSizeBytes { get; set; }
+        public int WordSizeBits { get; set; }
+
+        /// <summary>
+        /// Gets the word size in bytes (derived from WordSizeBits).
+        /// </summary>
+        internal int WordSizeBytes => WordSizeBits / 8;
 
         /// <summary>
         /// Gets the number of segments in this collection.
@@ -56,17 +61,17 @@ namespace BincopySharp
         /// <summary>
         /// Initializes a new instance of the Segments class.
         /// </summary>
-        /// <param name="wordSizeBytes">The word size in bytes (1, 2, 4, or 8).</param>
-        public Segments(int wordSizeBytes)
+        /// <param name="wordSizeBits">The word size in bits (8, 16, 32, or 64).</param>
+        public Segments(int wordSizeBits)
         {
-            if (wordSizeBytes != 1 && wordSizeBytes != 2 && wordSizeBytes != 4 && wordSizeBytes != 8)
+            if (wordSizeBits != 8 && wordSizeBits != 16 && wordSizeBits != 32 && wordSizeBits != 64)
             {
                 throw new ArgumentException(
-                    $"Word size must be 1, 2, 4, or 8 bytes, got {wordSizeBytes}",
-                    nameof(wordSizeBytes));
+                    $"Word size must be 8, 16, 32, or 64 bits, got {wordSizeBits}",
+                    nameof(wordSizeBits));
             }
 
-            WordSizeBytes = wordSizeBytes;
+            WordSizeBits = wordSizeBits;
             _segments = new List<Segment>();
         }
 
@@ -81,7 +86,7 @@ namespace BincopySharp
             {
                 if (index < 0 || index >= _segments.Count)
                 {
-                    throw new BincopyException("segment does not exist");
+                    throw new BincopyException("Segment does not exist");
                 }
                 return _segments[index];
             }
@@ -99,10 +104,10 @@ namespace BincopySharp
                 throw new ArgumentNullException(nameof(segment));
             }
 
-            if (segment.WordSizeBytes != WordSizeBytes)
+            if (segment.WordSizeBits != WordSizeBits)
             {
                 throw new ArgumentException(
-                    $"Segment word size ({segment.WordSizeBytes}) does not match collection word size ({WordSizeBytes})");
+                    $"Segment word size ({segment.WordSizeBits} bits) does not match collection word size ({WordSizeBits} bits)");
             }
 
             if (_segments.Count == 0)
@@ -218,11 +223,8 @@ namespace BincopySharp
         {
             if (minAddr == target.MaximumAddress)
             {
-                // Append: adjacent after
-                byte[] newData = new byte[target.Data.Length + data.Length];
-                Array.Copy(target.Data, 0, newData, 0, target.Data.Length);
-                Array.Copy(data, 0, newData, target.Data.Length, data.Length);
-                target.Data = newData;
+                // Append: adjacent after — use buffered append for O(1) amortized
+                target.AppendToBuffer(data, 0, data.Length);
                 target.MaximumAddress = maxAddr;
             }
             else if (maxAddr == target.MinimumAddress)
@@ -336,12 +338,12 @@ namespace BincopySharp
         {
             if ((size % alignment) != 0)
             {
-                throw new BincopyException($"size {size} is not a multiple of alignment {alignment}");
+                throw new BincopyException($"Size {size} is not a multiple of alignment {alignment}");
             }
 
             if (padding != null && padding.Length != WordSizeBytes)
             {
-                throw new BincopyException($"padding must be a word value (size {WordSizeBytes}), got {padding.Length} bytes");
+                throw new BincopyException($"Padding must be a word value (size {WordSizeBytes}), got {padding.Length} bytes");
             }
 
             (ulong Address, byte[] Data)? previous = null;
@@ -418,7 +420,7 @@ namespace BincopySharp
         /// <returns>A string describing the segments collection.</returns>
         public override string ToString()
         {
-            return $"Segments(count={Count}, word_size={WordSizeBytes})";
+            return $"Segments(count={Count}, word_size_bits={WordSizeBits})";
         }
     }
 }

@@ -15,6 +15,16 @@ namespace BincopySharp.Formats
         {
             var lines = new List<string>();
 
+            // Validate address range (VMEM uses @XXXXXXXX format, 32-bit max)
+            foreach (var segment in segments)
+            {
+                if (segment.MaximumAddress - 1 > 0xFFFFFFFF)
+                {
+                    throw new BincopyException(
+                        "Cannot address more than 0xFFFFFFFF in Verilog VMEM files (32 bits addresses)");
+                }
+            }
+
             // Add header comment if present
             if (options.Header != null)
             {

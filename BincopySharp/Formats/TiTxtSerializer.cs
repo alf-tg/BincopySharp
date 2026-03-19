@@ -18,6 +18,16 @@ namespace BincopySharp.Formats
             var lines = new List<string>();
             int numberOfDataWords = TI_TXT_BYTES_PER_LINE / segments.WordSizeBytes;
 
+            // Validate address range (TI-TXT uses variable-width hex addresses, but 32-bit max is practical)
+            foreach (var segment in segments)
+            {
+                if (segment.MaximumAddress - 1 > 0xFFFFFFFF)
+                {
+                    throw new BincopyException(
+                        "Cannot address more than 0xFFFFFFFF in TI-TXT files (32 bits addresses)");
+                }
+            }
+
             foreach (var segment in segments)
             {
                 // Add address directive

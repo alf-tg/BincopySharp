@@ -9,6 +9,9 @@ namespace BincopySharp
     /// </summary>
     public class Segment : IEnumerable<byte>
     {
+        private byte[] _buffer = Array.Empty<byte>();
+        private int _dataLength;
+
         /// <summary>
         /// Gets the minimum address of this segment (inclusive) in BYTES.
         /// </summary>
@@ -22,27 +25,68 @@ namespace BincopySharp
         /// <summary>
         /// Gets the address of this segment in WORDS.
         /// </summary>
-        public ulong Address => MinimumAddress / (ulong)WordSizeBytes;
+        public ulong Address => MinimumAddress / (ulong)(WordSizeBits / 8);
 
         /// <summary>
-        /// Gets the binary data contained in this segment.
+        /// Gets or sets the binary data contained in this segment.
         /// </summary>
-        public byte[] Data { get; internal set; }
+        public byte[] Data
+        {
+            get
+            {
+                if (_buffer.Length != _dataLength)
+                {
+                    // Trim to exact size on read
+                    byte[] exact = new byte[_dataLength];
+                    Array.Copy(_buffer, 0, exact, 0, _dataLength);
+                    _buffer = exact;
+                }
+                return _buffer;
+            }
+            internal set
+            {
+                _buffer = value;
+                _dataLength = value.Length;
+            }
+        }
 
         /// <summary>
-        /// Gets or sets the word size in bytes (1, 2, 4, or 8).
+        /// Gets or sets the word size in bits (8, 16, 32, or 64).
         /// </summary>
-        public int WordSizeBytes { get; set; }
+        public int WordSizeBits { get; set; }
+
+        /// <summary>
+        /// Gets the word size in bytes (derived from WordSizeBits).
+        /// </summary>
+        internal int WordSizeBytes => WordSizeBits / 8;
 
         /// <summary>
         /// Gets the length of the segment in bytes.
         /// </summary>
-        public ulong Length => (ulong)Data.Length;
+        public ulong Length => (ulong)_dataLength;
 
         /// <summary>
         /// Gets the number of words in the segment.
         /// </summary>
-        public ulong WordCount => (ulong)Data.Length / (ulong)WordSizeBytes;
+        public ulong WordCount => (ulong)_dataLength / (ulong)(WordSizeBits / 8);
+
+        /// <summary>
+        /// Appends data to the end of this segment's internal buffer with geometric growth.
+        /// Does NOT update MinimumAddress/MaximumAddress — caller must do that.
+        /// </summary>
+        internal void AppendToBuffer(byte[] data, int offset, int count)
+        {
+            int required = _dataLength + count;
+            if (required > _buffer.Length)
+            {
+                int newCapacity = Math.Max(_buffer.Length * 2, required);
+                byte[] newBuffer = new byte[newCapacity];
+                Array.Copy(_buffer, 0, newBuffer, 0, _dataLength);
+                _buffer = newBuffer;
+            }
+            Array.Copy(data, offset, _buffer, _dataLength, count);
+            _dataLength += count;
+        }
 
         /// <summary>
         /// Initializes a new instance of the Segment class.
@@ -50,14 +94,14 @@ namespace BincopySharp
         /// <param name="minimumAddress">The minimum address (inclusive) in BYTES.</param>
         /// <param name="maximumAddress">The maximum address (exclusive) in BYTES.</param>
         /// <param name="data">The binary data in bytes.</param>
-        /// <param name="wordSizeBytes">The word size in bytes (1, 2, 4, or 8).</param>
-        public Segment(ulong minimumAddress, ulong maximumAddress, byte[] data, int wordSizeBytes)
+        /// <param name="wordSizeBits">The word size in bits (8, 16, 32, or 64).</param>
+        public Segment(ulong minimumAddress, ulong maximumAddress, byte[] data, int wordSizeBits)
         {
-            if (wordSizeBytes != 1 && wordSizeBytes != 2 && wordSizeBytes != 4 && wordSizeBytes != 8)
+            if (wordSizeBits != 8 && wordSizeBits != 16 && wordSizeBits != 32 && wordSizeBits != 64)
             {
                 throw new ArgumentException(
-                    $"Word size must be 1, 2, 4, or 8 bytes, got {wordSizeBytes}",
-                    nameof(wordSizeBytes));
+                    $"Word size must be 8, 16, 32, or 64 bits, got {wordSizeBits}",
+                    nameof(wordSizeBits));
             }
 
             if (maximumAddress <= minimumAddress)
@@ -75,8 +119,8 @@ namespace BincopySharp
             // minimumAddress + data.Length (used in Chunks where max_address = address + size)
             MinimumAddress = minimumAddress;
             MaximumAddress = maximumAddress;
-            Data = data;
-            WordSizeBytes = wordSizeBytes;
+            Data = (byte[])data.Clone();
+            WordSizeBits = wordSizeBits;
         }
 
         /// <summary>
@@ -101,12 +145,12 @@ namespace BincopySharp
 
             if ((size % alignment) != 0)
             {
-                throw new BincopyException($"size {size} is not a multiple of alignment {alignment}");
+                throw new BincopyException($"Size {size} is not a multiple of alignment {alignment}");
             }
 
             if (padding != null && padding.Length != WordSizeBytes)
             {
-                throw new BincopyException($"padding must be a word value (size {WordSizeBytes}), got {padding.Length} bytes");
+                throw new BincopyException($"Padding must be a word value (size {WordSizeBytes}), got {padding.Length} bytes");
             }
 
             // Convert from WORDS to BYTES
@@ -267,7 +311,7 @@ namespace BincopySharp
                 ulong newLength = newMaxAddress - MinimumAddress;
                 byte[] newData = new byte[newLength];
                 Array.Copy(Data, 0, newData, 0, (long)newLength);
-                return (new Segment(MinimumAddress, newMaxAddress, newData, WordSizeBytes), null);
+                return (new Segment(MinimumAddress, newMaxAddress, newData, WordSizeBits), null);
             }
 
             // Partial removal - right side remains
@@ -278,7 +322,7 @@ namespace BincopySharp
                 ulong newLength = (ulong)Data.Length - offset;
                 byte[] newData = new byte[newLength];
                 Array.Copy(Data, (long)offset, newData, 0, (long)newLength);
-                return (null, new Segment(newMinAddress, MaximumAddress, newData, WordSizeBytes));
+                return (null, new Segment(newMinAddress, MaximumAddress, newData, WordSizeBits));
             }
 
             // Middle removal - split into two segments
@@ -294,8 +338,8 @@ namespace BincopySharp
             Array.Copy(Data, (long)rightOffset, rightData, 0, (long)rightLength);
 
             return (
-                new Segment(MinimumAddress, leftMaxAddress, leftData, WordSizeBytes),
-                new Segment(rightMinAddress, MaximumAddress, rightData, WordSizeBytes)
+                new Segment(MinimumAddress, leftMaxAddress, leftData, WordSizeBits),
+                new Segment(rightMinAddress, MaximumAddress, rightData, WordSizeBits)
             );
         }
 
