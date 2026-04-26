@@ -7,21 +7,11 @@ namespace BincopySharp
     /// <summary>
     /// Represents a collection of non-overlapping memory segments ordered by address.
     /// </summary>
-    public class Segments : IEnumerable<Segment>
+    public class Segments : IReadOnlyList<Segment>
     {
         private readonly List<Segment> _segments;
         private Segment? _currentSegment;
         private int _currentSegmentIndex;
-
-        /// <summary>
-        /// Gets or sets the word size in bits for all segments in this collection.
-        /// </summary>
-        public int WordSizeBits { get; set; }
-
-        /// <summary>
-        /// Gets the word size in bytes (derived from WordSizeBits).
-        /// </summary>
-        internal int WordSizeBytes => WordSizeBits / 8;
 
         /// <summary>
         /// Gets the number of segments in this collection.
@@ -61,17 +51,8 @@ namespace BincopySharp
         /// <summary>
         /// Initializes a new instance of the Segments class.
         /// </summary>
-        /// <param name="wordSizeBits">The word size in bits (8, 16, 32, or 64).</param>
-        public Segments(int wordSizeBits)
+        public Segments()
         {
-            if (wordSizeBits != 8 && wordSizeBits != 16 && wordSizeBits != 32 && wordSizeBits != 64)
-            {
-                throw new ArgumentException(
-                    $"Word size must be 8, 16, 32, or 64 bits, got {wordSizeBits}",
-                    nameof(wordSizeBits));
-            }
-
-            WordSizeBits = wordSizeBits;
             _segments = new List<Segment>();
         }
 
@@ -84,7 +65,7 @@ namespace BincopySharp
         {
             get
             {
-                if (index < 0 || index >= _segments.Count)
+                if ((index < 0) || (index >= _segments.Count))
                 {
                     throw new BincopyException("Segment does not exist");
                 }
@@ -97,17 +78,14 @@ namespace BincopySharp
         /// </summary>
         /// <param name="segment">The segment to add.</param>
         /// <param name="overwrite">Whether to overwrite existing data.</param>
-        public void Add(Segment segment, bool overwrite = false)
+        internal void Add(Segment segment, bool overwrite = false)
         {
+            int insertionIndex;
+            Segment existingSegment;
+
             if (segment == null)
             {
                 throw new ArgumentNullException(nameof(segment));
-            }
-
-            if (segment.WordSizeBits != WordSizeBits)
-            {
-                throw new ArgumentException(
-                    $"Segment word size ({segment.WordSizeBits} bits) does not match collection word size ({WordSizeBits} bits)");
             }
 
             if (_segments.Count == 0)
@@ -119,93 +97,67 @@ namespace BincopySharp
             }
 
             // Fast path: adjacent to last added segment (common case when parsing files)
-            if (_currentSegment != null && segment.MinimumAddress == _currentSegment.MaximumAddress)
+            if ((_currentSegment != null) && (segment.MinimumAddress == _currentSegment.MaximumAddress))
             {
-                AddDataToSegment(_currentSegment, segment.MinimumAddress, segment.MaximumAddress, segment.Data, overwrite);
-                
-                // Remove overwritten and merge adjacent segments after current
-                int currentIndex = _currentSegmentIndex;
-                while (currentIndex < _segments.Count - 1)
-                {
-                    var next = _segments[currentIndex + 1];
-
-                    if (_currentSegment.MaximumAddress >= next.MaximumAddress)
-                    {
-                        // The whole next segment is overwritten
-                        _segments.RemoveAt(currentIndex + 1);
-                    }
-                    else if (_currentSegment.MaximumAddress >= next.MinimumAddress)
-                    {
-                        // Adjacent or beginning of the next segment overwritten - merge remaining
-                        int offset = (int)(_currentSegment.MaximumAddress - next.MinimumAddress);
-                        byte[] remainingData = new byte[next.Data.Length - offset];
-                        Array.Copy(next.Data, offset, remainingData, 0, remainingData.Length);
-                        AddDataToSegment(_currentSegment, _currentSegment.MaximumAddress, next.MaximumAddress, remainingData, false);
-                        _segments.RemoveAt(currentIndex + 1);
-                        break;
-                    }
-                    else
-                    {
-                        // Segments are not overlapping, nor adjacent
-                        break;
-                    }
-                }
-                return;
+                insertionIndex = _currentSegmentIndex;
+                existingSegment = _currentSegment;
             }
-
             // Slow path: linear search for insertion point
-            int i;
-            for (i = 0; i < _segments.Count; i++)
+            else
             {
-                if (segment.MinimumAddress <= _segments[i].MaximumAddress)
+                for (insertionIndex = 0; insertionIndex < _segments.Count; insertionIndex++)
                 {
-                    break;
+                    if (segment.MinimumAddress <= _segments[insertionIndex].MaximumAddress)
+                    {
+                        break;
+                    }
                 }
-            }
 
-            if (i == _segments.Count)
-            {
-                // Non-overlapping, non-adjacent after all existing segments
-                _segments.Add(segment);
-                _currentSegment = segment;
-                _currentSegmentIndex = i;
-                return;
-            }
+                if (insertionIndex == _segments.Count)
+                {
+                    // Non-overlapping, non-adjacent after all existing segments
+                    _segments.Add(segment);
+                    _currentSegment = segment;
+                    _currentSegmentIndex = insertionIndex;
+                    return;
+                }
 
-            var s = _segments[i];
+                existingSegment = _segments[insertionIndex];
 
-            if (segment.MaximumAddress < s.MinimumAddress)
-            {
-                // Non-overlapping, non-adjacent before
-                _segments.Insert(i, segment);
-                _currentSegment = segment;
-                _currentSegmentIndex = i;
-                return;
+                if (segment.MaximumAddress < existingSegment.MinimumAddress)
+                {
+                    // Non-overlapping, non-adjacent before
+                    _segments.Insert(insertionIndex, segment);
+                    _currentSegment = segment;
+                    _currentSegmentIndex = insertionIndex;
+                    return;
+                }
             }
 
             // Adjacent or overlapping - merge into existing segment
-            AddDataToSegment(s, segment.MinimumAddress, segment.MaximumAddress, segment.Data, overwrite);
-            _currentSegment = s;
-            _currentSegmentIndex = i;
+            ThrowIfOverwriteViolation(insertionIndex, segment, overwrite);
+            AddDataToSegment(existingSegment, segment.MinimumAddress, segment.MaximumAddress, segment.DataSpan.ToArray());
+            _currentSegment = existingSegment;
+            _currentSegmentIndex = insertionIndex;
 
             // Remove overwritten and merge adjacent segments after the current one
-            while (i < _segments.Count - 1)
+            while (insertionIndex < _segments.Count - 1)
             {
-                var next = _segments[i + 1];
+                var next = _segments[insertionIndex + 1];
 
-                if (s.MaximumAddress >= next.MaximumAddress)
+                if (existingSegment.MaximumAddress >= next.MaximumAddress)
                 {
                     // The whole next segment is overwritten
-                    _segments.RemoveAt(i + 1);
+                    _segments.RemoveAt(insertionIndex + 1);
+                    // As _segments.Count is reduced, the next segment has index insertionIndex.
                 }
-                else if (s.MaximumAddress >= next.MinimumAddress)
+                else if (existingSegment.MaximumAddress >= next.MinimumAddress)
                 {
                     // Adjacent or beginning of the next segment overwritten - merge remaining
-                    int offset = (int)(s.MaximumAddress - next.MinimumAddress);
-                    byte[] remainingData = new byte[next.Data.Length - offset];
-                    Array.Copy(next.Data, offset, remainingData, 0, remainingData.Length);
-                    AddDataToSegment(s, s.MaximumAddress, next.MaximumAddress, remainingData, false);
-                    _segments.RemoveAt(i + 1);
+                    int offset = (int)(existingSegment.MaximumAddress - next.MinimumAddress);
+                    byte[] remainingData = next.DataSpan.Slice(offset).ToArray();
+                    AddDataToSegment(existingSegment, existingSegment.MaximumAddress, next.MaximumAddress, remainingData);
+                    _segments.RemoveAt(insertionIndex + 1);
                     break;
                 }
                 else
@@ -217,74 +169,73 @@ namespace BincopySharp
         }
 
         /// <summary>
+        /// Throws <see cref="AddDataException"/> if <paramref name="incoming"/> overlaps with
+        /// the segment at <paramref name="currentIndex"/> or with the next segment in the list,
+        /// and <paramref name="overwrite"/> is false. Must be called before any state mutation.
+        /// </summary>
+        private void ThrowIfOverwriteViolation(int currentIndex, Segment incoming, bool overwrite)
+        {
+            if (overwrite)
+            {
+                return;
+            }
+
+            var target = _segments[currentIndex];
+
+            // Incoming segment overlaps current segment
+            if ((incoming.MinimumAddress < target.MaximumAddress) && (incoming.MaximumAddress > target.MinimumAddress))
+            {
+                throw new AddDataException(Math.Max(target.MinimumAddress, incoming.MinimumAddress));
+            }
+
+            // Incoming segment overlaps next segment
+            if ((currentIndex < _segments.Count - 1) &&
+                (incoming.MaximumAddress > _segments[currentIndex + 1].MinimumAddress))
+            {
+                throw new AddDataException(_segments[currentIndex + 1].MinimumAddress);
+            }
+        }
+
+        /// <summary>
         /// Adds data to an existing segment, handling adjacent and overlapping cases.
         /// </summary>
-        private void AddDataToSegment(Segment target, ulong minAddr, ulong maxAddr, byte[] data, bool overwrite)
+        private void AddDataToSegment(Segment target, ulong minAddr, ulong maxAddr, byte[] data)
         {
-            if (minAddr == target.MaximumAddress)
+            int targetWriteOffset;
+            int sourceReadOffset = 0;
+
+            // Prepend data if new segment starts before existing
+            if (minAddr < target.MinimumAddress)
             {
-                // Append: adjacent after — use buffered append for O(1) amortized
-                target.AppendToBuffer(data, 0, data.Length);
-                target.MaximumAddress = maxAddr;
-            }
-            else if (maxAddr == target.MinimumAddress)
-            {
-                // Prepend: adjacent before
-                byte[] newData = new byte[data.Length + target.Data.Length];
-                Array.Copy(data, 0, newData, 0, data.Length);
-                Array.Copy(target.Data, 0, newData, data.Length, target.Data.Length);
-                target.Data = newData;
+                int prependSize = (int)(target.MinimumAddress - minAddr);
+                ReadOnlySpan<byte> existing = target.DataSpan;
+                byte[] newData = new byte[prependSize + existing.Length];
+                data.AsSpan(0, prependSize).CopyTo(newData);
+                existing.CopyTo(newData.AsSpan(prependSize));
+                target.ReplaceData(newData);
                 target.MinimumAddress = minAddr;
-            }
-            else if (overwrite
-                     && minAddr < target.MaximumAddress
-                     && maxAddr > target.MinimumAddress)
-            {
-                int selfDataOffset;
-                int dataOffset = 0;
-
-                // Prepend data if new segment starts before existing
-                if (minAddr < target.MinimumAddress)
-                {
-                    int prependSize = (int)(target.MinimumAddress - minAddr);
-                    byte[] newData = new byte[prependSize + target.Data.Length];
-                    Array.Copy(data, 0, newData, 0, prependSize);
-                    Array.Copy(target.Data, 0, newData, prependSize, target.Data.Length);
-                    target.Data = newData;
-                    target.MinimumAddress = minAddr;
-                    dataOffset = prependSize;
-                    selfDataOffset = prependSize;
-                }
-                else
-                {
-                    selfDataOffset = (int)(minAddr - target.MinimumAddress);
-                }
-
-                // Overwrite overlapping part
-                int selfDataLeft = target.Data.Length - selfDataOffset;
-                int remainingData = data.Length - dataOffset;
-
-                if (remainingData <= selfDataLeft)
-                {
-                    Array.Copy(data, dataOffset, target.Data, selfDataOffset, remainingData);
-                }
-                else
-                {
-                    // Overwrite what fits, then append the rest
-                    Array.Copy(data, dataOffset, target.Data, selfDataOffset, selfDataLeft);
-                    int appendSize = remainingData - selfDataLeft;
-                    byte[] newData = new byte[target.Data.Length + appendSize];
-                    Array.Copy(target.Data, 0, newData, 0, target.Data.Length);
-                    Array.Copy(data, dataOffset + selfDataLeft, newData, target.Data.Length, appendSize);
-                    target.Data = newData;
-                    target.MaximumAddress = maxAddr;
-                }
+                sourceReadOffset = prependSize;
+                targetWriteOffset = prependSize;
             }
             else
             {
-                throw new AddDataException(
-                    Math.Max(target.MinimumAddress, minAddr));
+                targetWriteOffset = (int)(minAddr - target.MinimumAddress);
             }
+
+            // Handle overlapping part
+            int targetBytesLeft = (int)target.Length - targetWriteOffset;
+            int sourceBytesLeft = data.Length - sourceReadOffset;
+            int overwriteBytesLeft = Math.Min(targetBytesLeft, sourceBytesLeft);
+
+            // Overwrite what fits
+            data.AsSpan(sourceReadOffset, overwriteBytesLeft).CopyTo(target.MutableDataSpan.Slice(targetWriteOffset));
+            targetBytesLeft = targetBytesLeft - overwriteBytesLeft;
+            sourceBytesLeft = sourceBytesLeft - overwriteBytesLeft;
+
+            // Then append the rest
+            sourceReadOffset += overwriteBytesLeft;
+            target.AppendToBuffer(data, sourceReadOffset, sourceBytesLeft);
+            target.MaximumAddress = Math.Max(target.MaximumAddress, maxAddr);
         }
 
         /// <summary>
@@ -292,58 +243,78 @@ namespace BincopySharp
         /// </summary>
         /// <param name="minimumAddress">The minimum address to remove.</param>
         /// <param name="maximumAddress">The maximum address to remove.</param>
-        public void Remove(ulong minimumAddress, ulong maximumAddress)
+        internal void Remove(ulong minimumAddress, ulong maximumAddress)
         {
             if (maximumAddress <= minimumAddress)
             {
                 throw new ArgumentException("Maximum address must be greater than minimum address");
             }
 
-            List<Segment> newSegments = new List<Segment>();
-
-            foreach (var segment in _segments)
+            for (int i = 0; i < _segments.Count; i++)
             {
-                var result = segment.RemoveData(minimumAddress, maximumAddress);
-
-                if (result == null)
+                // Segments are ordered — skip segments entirely before the removal range
+                if (_segments[i].MaximumAddress <= minimumAddress)
                 {
-                    // Segment completely removed, skip it
                     continue;
                 }
 
-                if (result.Value.Left != null)
+                // Segments are ordered — once past the removal range, no more segments can be affected
+                if (_segments[i].MinimumAddress >= maximumAddress)
                 {
-                    newSegments.Add(result.Value.Left);
+                    break;
                 }
 
-                if (result.Value.Right != null)
+                var result = _segments[i].RemoveData(minimumAddress, maximumAddress);
+
+                if (result == null)
                 {
-                    newSegments.Add(result.Value.Right);
+                    // Segment completely removed
+                    _segments.RemoveAt(i--);
+                }
+                else
+                {
+                    if (result.Value.Left != null)
+                    {
+                        _segments[i] = result.Value.Left;
+                    }
+                    else
+                    {
+                        _segments.RemoveAt(i--);
+                    }
+
+                    if (result.Value.Right != null)
+                    {
+                        _segments.Insert(++i, result.Value.Right);
+                    }
                 }
             }
-
-            _segments.Clear();
-            _segments.AddRange(newSegments);
+            _currentSegment = null;
+            _currentSegmentIndex = 0;
         }
 
         /// <summary>
         /// Returns chunks of data from all segments.
-        /// Size and alignment are in WORDS.
+        /// Size and alignment are in BYTES.
         /// </summary>
-        /// <param name="size">The size of each chunk in WORDS.</param>
-        /// <param name="alignment">The alignment boundary in WORDS.</param>
+        /// <param name="size">The size of each chunk in BYTES.</param>
+        /// <param name="alignment">The alignment boundary in BYTES.</param>
         /// <param name="padding">Optional padding bytes to use for alignment.</param>
-        /// <returns>An enumerable of tuples containing address in WORDS and chunk data.</returns>
+        /// <returns>An enumerable of tuples containing address in BYTES and chunk data.</returns>
         public IEnumerable<(ulong Address, byte[] Data)> Chunks(int size = 32, int alignment = 1, byte[]? padding = null)
         {
+            if (size <= 0)
+            {
+                throw new ArgumentException("Chunk size must be positive", nameof(size));
+            }
+
+            if (alignment <= 0)
+            {
+                throw new ArgumentException("Alignment must be positive", nameof(alignment));
+            }
+
             if ((size % alignment) != 0)
             {
                 throw new BincopyException($"Size {size} is not a multiple of alignment {alignment}");
-            }
-
-            if (padding != null && padding.Length != WordSizeBytes)
-            {
-                throw new BincopyException($"Padding must be a word value (size {WordSizeBytes}), got {padding.Length} bytes");
             }
 
             (ulong Address, byte[] Data)? previous = null;
@@ -353,24 +324,23 @@ namespace BincopySharp
                 foreach (var chunk in segment.Chunks(size, alignment, padding))
                 {
                     var currentChunk = chunk;
-                    
+
                     // When chunks are padded to alignment, the final chunk of the previous
                     // segment and the first chunk of the current segment may overlap by
                     // one alignment block. Merge them to avoid overwriting lower segment data.
-                    if (previous.HasValue && currentChunk.Address < previous.Value.Address + (ulong)(previous.Value.Data.Length / WordSizeBytes))
+                    if (previous.HasValue && currentChunk.Address < previous.Value.Address + (ulong)(previous.Value.Data.Length))
                     {
-                        int alignmentBytes = alignment * WordSizeBytes;
-                        byte[] low = new byte[alignmentBytes];
-                        byte[] high = new byte[alignmentBytes];
-                        
+                        byte[] low = new byte[alignment];
+                        byte[] high = new byte[alignment];
+
                         // Get last alignment block from previous chunk
-                        Array.Copy(previous.Value.Data, previous.Value.Data.Length - alignmentBytes, low, 0, alignmentBytes);
-                        
+                        Array.Copy(previous.Value.Data, previous.Value.Data.Length - alignment, low, 0, alignment);
+
                         // Get first alignment block from current chunk
-                        Array.Copy(currentChunk.Data, 0, high, 0, alignmentBytes);
-                        
+                        Array.Copy(currentChunk.Data, 0, high, 0, alignment);
+
                         // Create alignment * padding
-                        byte[] alignmentPadding = new byte[alignmentBytes];
+                        byte[] alignmentPadding = new byte[alignment];
                         if (padding != null)
                         {
                             for (int i = 0; i < alignment; i++)
@@ -378,19 +348,28 @@ namespace BincopySharp
                                 Array.Copy(padding, 0, alignmentPadding, i * WordSizeBytes, WordSizeBytes);
                             }
                         }
-                        
-                        // XOR: low ^ high ^ alignmentPadding
-                        byte[] merged = new byte[alignmentBytes];
-                        for (int i = 0; i < alignmentBytes; i++)
+
+                        // Direct copy: for each byte position, prefer real data over padding.
+                        // If low[i] differs from padding, it has real data — use it.
+                        // Otherwise, use high[i] (which may be real data or padding).
+                        byte[] merged = new byte[alignment];
+                        for (int i = 0; i < alignment; i++)
                         {
-                            merged[i] = (byte)(low[i] ^ high[i] ^ alignmentPadding[i]);
+                            if (low[i] != alignmentPadding[i])
+                            {
+                                merged[i] = low[i];
+                            }
+                            else
+                            {
+                                merged[i] = high[i];
+                            }
                         }
-                        
+
                         // Replace first alignment block of chunk with merged data
                         byte[] newChunkData = new byte[currentChunk.Data.Length];
-                        Array.Copy(merged, 0, newChunkData, 0, alignmentBytes);
-                        Array.Copy(currentChunk.Data, alignmentBytes, newChunkData, alignmentBytes, currentChunk.Data.Length - alignmentBytes);
-                        
+                        Array.Copy(merged, 0, newChunkData, 0, alignment);
+                        Array.Copy(currentChunk.Data, alignment, newChunkData, alignment, currentChunk.Data.Length - alignment);
+
                         currentChunk = (currentChunk.Address, newChunkData);
                     }
 

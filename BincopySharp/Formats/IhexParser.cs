@@ -112,7 +112,9 @@ namespace BincopySharp.Formats
                             {
                                 result.Segments.Add(new Segment(accumMinAddr, accumMaxAddr, accumData.ToArray(), wordSizeBits));
                             }
-                            accumData = new List<byte>(recordData);
+                            // Pre-allocate with reasonable capacity to reduce List resizes for large segments.
+                            accumData = new List<byte>(Math.Max(recordData.Length, 4096));
+                            accumData.AddRange(recordData);
                             accumMinAddr = segmentAddress;
                             accumMaxAddr = segmentMaxAddress;
                         }
@@ -126,12 +128,14 @@ namespace BincopySharp.Formats
                         // Extended segment address record
                         extendedSegmentAddress = (ulong)((recordData[0] << 8) | recordData[1]);
                         extendedSegmentAddress *= 16;
+                        extendedLinearAddress = 0;
                     }
                     else if (type == IHEX_EXTENDED_LINEAR_ADDRESS)
                     {
                         // Extended linear address record
                         extendedLinearAddress = (ulong)((recordData[0] << 8) | recordData[1]);
                         extendedLinearAddress <<= 16;
+                        extendedSegmentAddress = 0;
                     }
                     else if (type == IHEX_START_SEGMENT_ADDRESS || type == IHEX_START_LINEAR_ADDRESS)
                     {
@@ -180,7 +184,7 @@ namespace BincopySharp.Formats
             }
             catch
             {
-                throw new InvalidRecordException(record, $"Invalid hex data in record '{record}'", null, null);
+                throw new InvalidRecordException(record, $"Invalid hex data in record '{record}'");
             }
 
             if (value.Length < 5)

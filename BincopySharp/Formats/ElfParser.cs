@@ -24,6 +24,11 @@ namespace BincopySharp.Formats
             throw new NotSupportedException("ELF format requires byte array input, not string");
         }
 
+        public ParseResult Parse(string data, int wordSizeBytes)
+        {
+            throw new NotSupportedException("ELF format requires byte array input, not string");
+        }
+
         /// <summary>
         /// Parses ELF data from a byte array.
         /// </summary>
@@ -42,6 +47,11 @@ namespace BincopySharp.Formats
                 {
                     elfFile = ELFReader.Load(stream, true);
                 }
+                catch (ArgumentException ex) when (ex.Message.Contains("not a proper ELF"))
+                {
+                    // File is not ELF format at all — signal format detection to try next format
+                    throw new UnsupportedFileFormatException("ELF", $"Not a valid ELF file: {ex.Message}");
+                }
                 catch (Exception ex)
                 {
                     throw new BincopyException($"Failed to parse ELF file: {ex.Message}", ex);
@@ -57,7 +67,9 @@ namespace BincopySharp.Formats
                     result.ExecutionStartAddress = elf64.EntryPoint;
                 }
 
-                // Iterate through segments
+                // Iterate through PT_LOAD segments and extract ALLOC sections within each.
+                // For each PT_LOAD segment, read section data using the raw byte array
+                // at the section's file offset, which preserves the exact file content.
                 foreach (var segment in elfFile.Segments)
                 {
                     // Only process PT_LOAD segments
@@ -82,6 +94,12 @@ namespace BincopySharp.Formats
                         segmentAddress = seg64.PhysicalAddress;
                         segmentOffset = (ulong)seg64.Offset;
                         segmentSize = (ulong)seg64.FileSize;
+                    }
+
+                    // Skip BSS segments (FileSize == 0)
+                    if (segmentSize == 0)
+                    {
+                        continue;
                     }
 
                     // Iterate through sections within this segment
@@ -121,15 +139,19 @@ namespace BincopySharp.Formats
                                 continue;
                             }
 
-                            // Calculate section address (safe: sectionOffset >= segmentOffset guaranteed here)
+                            // Calculate section address
                             ulong sectionAddress = segmentAddress + sectionOffset - segmentOffset;
 
-                            // Get section data
-                            byte[] sectionData = section.GetContents();
+                            // Read section data directly from the raw byte array
+                            int offset = (int)sectionOffset;
+                            int size = (int)sectionSize;
 
-                            if (sectionData != null && sectionData.Length > 0)
+                            if (offset + size <= data.Length && size > 0)
                             {
-                                ulong maxAddress = sectionAddress + (ulong)sectionData.Length;
+                                byte[] sectionData = new byte[size];
+                                Array.Copy(data, offset, sectionData, 0, size);
+
+                                ulong maxAddress = sectionAddress + (ulong)size;
                                 var seg = new Segment(sectionAddress, maxAddress, sectionData, wordSizeBits);
                                 result.Segments.Add(seg);
                             }

@@ -115,7 +115,7 @@ namespace BincopySharp.Formats
                             throw new BincopyException("Missing section address");
                         }
 
-                        ulong segmentAddress = address.Value;
+                        ulong segmentAddress = address.Value * (ulong)wordSizeBytes;
                         ulong segmentMaxAddress = segmentAddress + (ulong)size;
 
                         // Accumulate consecutive lines into one segment
@@ -137,7 +137,7 @@ namespace BincopySharp.Formats
 
                         if (size == TI_TXT_BYTES_PER_LINE)
                         {
-                            address = address.Value + (ulong)size;
+                            address = address.Value + (ulong)(size / wordSizeBytes);
                         }
                         else
                         {

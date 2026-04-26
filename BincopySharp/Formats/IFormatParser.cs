@@ -23,5 +23,13 @@ namespace BincopySharp.Formats
         /// <param name="data">The data to parse.</param>
         /// <returns>A ParseResult containing the parsed segments and metadata.</returns>
         ParseResult Parse(string data);
+
+        /// <summary>
+        /// Parses the given data into a ParseResult with a specified word size.
+        /// </summary>
+        /// <param name="data">The data to parse.</param>
+        /// <param name="wordSizeBytes">The word size in bytes.</param>
+        /// <returns>A ParseResult containing the parsed segments and metadata.</returns>
+        ParseResult Parse(string data, int wordSizeBytes);
     }
 }

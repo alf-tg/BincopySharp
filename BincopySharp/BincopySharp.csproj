@@ -2,14 +2,15 @@
 
   <PropertyGroup>
     <TargetFramework>netstandard2.0</TargetFramework>
+    <RootNamespace>BincopySharp</RootNamespace>
     <LangVersion>8.0</LangVersion>
     <Nullable>enable</Nullable>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <Authors>Alfonso (Port from Python bincopy by Erik Moqvist)</Authors>
     <Description>C# library for reading and writing binary files in various formats (Motorola S-Record, Intel HEX, TI-TXT, Verilog VMEM, ELF, and binary files). Port of the Python bincopy library.</Description>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
-    <PackageProjectUrl>https://github.com/eerimoq/bincopy</PackageProjectUrl>
-    <RepositoryUrl>https://github.com/eerimoq/bincopy</RepositoryUrl>
+    <PackageProjectUrl>https://github.com/YOUR-ORG/BincopySharp</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/YOUR-ORG/BincopySharp</RepositoryUrl>
     <PackageTags>binary;hex;srec;ihex;elf;firmware;embedded</PackageTags>
   </PropertyGroup>
 
@@ -21,6 +22,7 @@
 
   <ItemGroup>
     <PackageReference Include="ELFSharp" Version="2.17.3" />
+    <PackageReference Include="Collections.Pooled" Version="1.0.4" />
   </ItemGroup>
 
 </Project>

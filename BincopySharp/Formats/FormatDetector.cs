@@ -15,14 +15,17 @@ namespace BincopySharp.Formats
         public FormatDetector()
         {
             // Order matters: try parsers in order of likelihood/specificity
+            // Note: MicrochipHexParser is NOT included here because it is syntactically
+            // identical to Intel HEX and cannot be reliably auto-detected from content alone.
+            // Users must explicitly call AddMicrochipHex() for Microchip HEX data.
             _parsers = new List<IFormatParser>
             {
                 new SrecParser(),
                 new IhexParser(),
                 new TiTxtParser(),
-                new VmemParser(),
-                new MicrochipHexParser()
+                new VmemParser()
                 // Note: ELF and Binary are not included as they require byte[] input
+                // Note: MicrochipHexParser excluded — use AddMicrochipHex() explicitly
             };
         }
 
@@ -36,7 +39,7 @@ namespace BincopySharp.Formats
         {
             if (string.IsNullOrWhiteSpace(data))
             {
-                throw new UnsupportedFileFormatException("", "Data is empty or whitespace");
+                throw new UnsupportedFileFormatException("Data is empty or whitespace");
             }
 
             foreach (var parser in _parsers)
@@ -47,19 +50,20 @@ namespace BincopySharp.Formats
                 }
             }
 
-            throw new UnsupportedFileFormatException("", "Unable to detect file format");
+            throw new UnsupportedFileFormatException("Unable to detect file format");
         }
 
         /// <summary>
         /// Tries to detect the format and parse the data.
         /// </summary>
         /// <param name="data">The data to parse.</param>
+        /// <param name="wordSizeBytes">The word size in bytes to pass to the parser. Default is 1.</param>
         /// <returns>The parse result.</returns>
         /// <exception cref="UnsupportedFileFormatException">Thrown when no parser can handle the data.</exception>
-        public ParseResult DetectAndParse(string data)
+        public ParseResult DetectAndParse(string data, int wordSizeBytes = 1)
         {
             var parser = DetectFormat(data);
-            return parser.Parse(data);
+            return parser.Parse(data, wordSizeBytes);
         }
     }
 }

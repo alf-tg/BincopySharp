@@ -36,6 +36,12 @@ namespace BincopySharp.Formats
             return Parse(data, 1);
         }
 
+        /// <summary>
+        /// Parses VMEM data. The word size for address calculations is deduced from the
+        /// file content (length of hex words). The wordSizeBytes parameter is used only
+        /// to set the WordSizeBits on the resulting segments, matching the Python bincopy
+        /// behavior where VMEM word size is always inferred from the data.
+        /// </summary>
         public ParseResult Parse(string data, int wordSizeBytes)
         {
             var result = new ParseResult();

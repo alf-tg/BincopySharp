@@ -152,7 +152,7 @@ namespace BincopySharp.Formats
             }
             catch
             {
-                throw new InvalidRecordException(record, $"Invalid hex data in record '{record}'", null, null);
+                throw new InvalidRecordException(record, $"Invalid hex data in record '{record}'");
             }
 
             if (value.Length < 2)

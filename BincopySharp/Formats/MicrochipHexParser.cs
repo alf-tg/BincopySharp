@@ -5,6 +5,8 @@ namespace BincopySharp.Formats
     /// <summary>
     /// Parser for Microchip HEX format.
     /// Microchip HEX is identical to Intel HEX except addresses are doubled.
+    /// This format cannot be reliably auto-detected because it is syntactically
+    /// identical to standard Intel HEX. Use AddMicrochipHex() explicitly.
     /// </summary>
     internal class MicrochipHexParser : IFormatParser
     {
@@ -21,12 +23,17 @@ namespace BincopySharp.Formats
         }
 
         /// <summary>
-        /// Checks if the data can be parsed as Microchip HEX format.
+        /// Always returns false for auto-detection purposes.
+        /// Microchip HEX is syntactically identical to Intel HEX and cannot be
+        /// reliably distinguished by content alone. Users must explicitly call
+        /// AddMicrochipHex() to parse Microchip HEX data.
         /// </summary>
         public bool CanParse(string data)
         {
-            // Microchip HEX uses the same format as Intel HEX
-            return _ihexParser.CanParse(data);
+            // Microchip HEX cannot be distinguished from standard Intel HEX
+            // by content alone — both use identical record formats.
+            // Return false so FormatDetector never picks this parser.
+            return false;
         }
 
         /// <summary>
@@ -46,7 +53,7 @@ namespace BincopySharp.Formats
                 var newSegment = new Segment(
                     segment.MinimumAddress,
                     segment.MaximumAddress,
-                    segment.Data,
+                    segment.DataSpan.ToArray(),
                     16
                 );
                 convertedSegments.Add(newSegment);
@@ -58,6 +65,11 @@ namespace BincopySharp.Formats
                 ExecutionStartAddress = result.ExecutionStartAddress,
                 Header = result.Header
             };
+        }
+
+        public ParseResult Parse(string data, int wordSizeBytes)
+        {
+            return Parse(data);
         }
     }
 }

@@ -32,7 +32,7 @@ namespace BincopySharp.Formats
                 var newSegment = new Segment(
                     segment.MinimumAddress,
                     segment.MaximumAddress,
-                    segment.Data,
+                    segment.DataSpan.ToArray(),
                     8
                 );
                 convertedSegments.Add(newSegment, overwrite: false);

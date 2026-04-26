@@ -32,22 +32,22 @@ namespace BincopySharp
     public class UnsupportedFileFormatException : BincopyException
     {
         /// <summary>
-        /// Gets the filename that caused the exception.
+        /// Gets the filename that caused the exception. Null if the exception was not caused by a file.
         /// </summary>
-        public string Filename { get; }
+        public string? Filename { get; }
 
         /// <summary>
-        /// Initializes a new instance of the UnsupportedFileFormatException class.
+        /// Initializes a new instance of the UnsupportedFileFormatException class without a filename.
+        /// Use this when the format error occurs on in-memory data, not a file.
         /// </summary>
-        /// <param name="filename">The filename that caused the exception.</param>
-        public UnsupportedFileFormatException(string filename)
-            : base($"Unsupported file format for '{filename}'")
+        /// <param name="message">The error message.</param>
+        public UnsupportedFileFormatException(string message)
+            : base(message)
         {
-            Filename = filename;
         }
 
         /// <summary>
-        /// Initializes a new instance of the UnsupportedFileFormatException class.
+        /// Initializes a new instance of the UnsupportedFileFormatException class with a filename.
         /// </summary>
         /// <param name="filename">The filename that caused the exception.</param>
         /// <param name="message">The error message.</param>
@@ -79,16 +79,6 @@ namespace BincopySharp
             ConflictAddress = address;
         }
 
-        /// <summary>
-        /// Initializes a new instance of the AddDataException class.
-        /// </summary>
-        /// <param name="address">The address where the conflict occurred.</param>
-        /// <param name="message">The error message.</param>
-        public AddDataException(ulong address, string message)
-            : base(message)
-        {
-            ConflictAddress = address;
-        }
     }
 
     /// <summary>
@@ -102,12 +92,12 @@ namespace BincopySharp
         public string Record { get; }
         
         /// <summary>
-        /// Gets the expected value (CRC, checksum, etc.).
+        /// Gets the expected value (CRC, checksum, etc.). Null if not applicable.
         /// </summary>
         public int? ExpectedValue { get; }
-        
+
         /// <summary>
-        /// Gets the actual value found.
+        /// Gets the actual value found. Null if not applicable.
         /// </summary>
         public int? ActualValue { get; }
 
@@ -129,7 +119,7 @@ namespace BincopySharp
         /// <param name="message">The error message.</param>
         /// <param name="expected">The expected value.</param>
         /// <param name="actual">The actual value found.</param>
-        public InvalidRecordException(string record, string message, int? expected, int? actual)
+        public InvalidRecordException(string record, string message, int expected, int actual)
             : base(message)
         {
             Record = record;

@@ -1,5 +1,5 @@
 using System;
-using System.Collections.Generic;
+using System.Text;
 using BincopySharp.Utilities;
 
 namespace BincopySharp.Formats
@@ -9,17 +9,27 @@ namespace BincopySharp.Formats
     /// </summary>
     internal class SrecSerializer : IFormatSerializer
     {
+        private static readonly char[] _hexUpper = "0123456789ABCDEF".ToCharArray();
+
         public string FormatName => "SREC";
 
         public string Serialize(Segments segments, SerializerOptions options)
         {
-            var lines = new List<string>();
+            // Pre-estimate capacity: ~45 chars per record
+            int estimatedLines = 0;
+            foreach (var segment in segments)
+            {
+                int segmentBytes = (int)segment.Length;
+                int dataBytes = options.NumberOfDataBytes > 0 ? options.NumberOfDataBytes : 32;
+                estimatedLines += (segmentBytes + dataBytes - 1) / dataBytes;
+            }
+            estimatedLines += 10; // overhead for header, count, start address records
+            var sb = new StringBuilder(estimatedLines * 50);
 
             // Add header record (S0) if present
             if (options.HeaderBytes != null)
             {
-                string headerRecord = PackSrec('0', 0, options.HeaderBytes.Length, options.HeaderBytes);
-                lines.Add(headerRecord);
+                AppendSrecRecord(sb, '0', 0, options.HeaderBytes.Length, options.HeaderBytes);
             }
 
             // Determine data record type and max address based on address length
@@ -48,9 +58,13 @@ namespace BincopySharp.Formats
             }
 
             // Validate that all segment addresses fit in the address range
+            // Segment addresses are stored in bytes internally; divide by WordSizeBytes
+            // to get word addresses for comparison against the SREC address limit
+            int wordSizeBytes = segments.WordSizeBytes;
             foreach (var segment in segments)
             {
-                if (segment.MaximumAddress - 1 > maxAddress)
+                ulong wordAddress = (segment.MaximumAddress - 1) / (ulong)wordSizeBytes;
+                if (wordAddress > maxAddress)
                 {
                     throw new BincopyException(
                         $"Cannot address more than 0x{maxAddress:X} in SREC S{dataType} records ({options.AddressLengthBits} bits addresses)");
@@ -61,19 +75,21 @@ namespace BincopySharp.Formats
             ulong numberOfRecords = 0;
             foreach (var (address, data) in segments.Chunks(options.NumberOfDataBytes / segments.WordSizeBytes))
             {
-                string dataRecord = PackSrec(dataType, address, data.Length, data);
-                lines.Add(dataRecord);
+                if (sb.Length > 0) sb.Append('\n');
+                AppendSrecRecord(sb, dataType, address, data.Length, data);
                 numberOfRecords++;
             }
 
             // Add record count record (S5 or S6)
             if (numberOfRecords <= 0xFFFF)
             {
-                lines.Add(PackSrec('5', numberOfRecords, 0, null));
+                if (sb.Length > 0) sb.Append('\n');
+                AppendSrecRecord(sb, '5', numberOfRecords, 0, null);
             }
             else if (numberOfRecords <= 0xFFFFFF)
             {
-                lines.Add(PackSrec('6', numberOfRecords, 0, null));
+                if (sb.Length > 0) sb.Append('\n');
+                AppendSrecRecord(sb, '6', numberOfRecords, 0, null);
             }
             else
             {
@@ -103,50 +119,58 @@ namespace BincopySharp.Formats
                     startType = '7';
                 }
 
-                lines.Add(PackSrec(startType, options.ExecutionStartAddress.Value, 0, null));
+                if (sb.Length > 0) sb.Append('\n');
+                AppendSrecRecord(sb, startType, options.ExecutionStartAddress.Value, 0, null);
             }
 
-            return string.Join("\n", lines) + "\n";
+            sb.Append('\n');
+            return sb.ToString();
         }
 
-        private string PackSrec(char type, ulong address, int size, byte[]? data)
+        private void AppendSrecRecord(StringBuilder sb, char type, ulong address, int size, byte[]? data)
         {
-            string line;
-
-            // Build the line based on record type
+            int addressBytes;
             if (type == '0' || type == '1' || type == '5' || type == '9')
-            {
-                // 2-byte address (16-bit)
-                line = $"{size + 2 + 1:X2}{address:X4}";
-            }
+                addressBytes = 2;
             else if (type == '2' || type == '6' || type == '8')
-            {
-                // 3-byte address (24-bit)
-                line = $"{size + 3 + 1:X2}{address:X6}";
-            }
+                addressBytes = 3;
             else if (type == '3' || type == '7')
-            {
-                // 4-byte address (32-bit)
-                line = $"{size + 4 + 1:X2}{address:X8}";
-            }
+                addressBytes = 4;
             else
-            {
                 throw new ArgumentException(
                     $"Expected record type 0..3 or 5..9, but got '{type}'",
                     nameof(type));
-            }
 
-            // Add data if present
-            if (data != null && data.Length > 0)
+            byte byteCount = (byte)(size + addressBytes + 1);
+            byte crc = CrcCalculator.CalculateSrecCrcRaw(byteCount, address, addressBytes, data);
+
+            sb.Append('S');
+            sb.Append(type);
+            AppendByte(sb, byteCount);
+
+            // Address bytes, big-endian, exact number of bytes
+            for (int i = addressBytes - 1; i >= 0; i--)
             {
-                line += HexConverter.ToHexString(data);
+                AppendByte(sb, (int)((address >> (i * 8)) & 0xFF));
             }
 
-            // Calculate and append CRC
-            byte crc = CrcCalculator.CalculateSrecCrc(line);
-            line = $"S{type}{line}{crc:X2}";
+            // Data bytes
+            if (data != null)
+            {
+                foreach (byte b in data)
+                {
+                    AppendByte(sb, b);
+                }
+            }
 
-            return line;
+            // CRC
+            AppendByte(sb, crc);
+        }
+
+        private void AppendByte(StringBuilder sb, int b)
+        {
+            sb.Append(_hexUpper[b >> 4]);
+            sb.Append(_hexUpper[b & 0x0F]);
         }
     }
 }

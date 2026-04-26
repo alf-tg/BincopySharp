@@ -8,25 +8,35 @@ namespace BincopySharp.Utilities
     /// </summary>
     internal static class HexConverter
     {
+        private static readonly char[] _hexUpper = "0123456789ABCDEF".ToCharArray();
+        private static readonly char[] _hexLower = "0123456789abcdef".ToCharArray();
+
         /// <summary>
         /// Converts a byte array to a hexadecimal string.
+        /// Uses a nibble lookup table to avoid per-byte string allocations.
         /// </summary>
         /// <param name="bytes">The byte array to convert.</param>
         /// <param name="uppercase">Whether to use uppercase letters. Default is true.</param>
         /// <returns>The hexadecimal string representation.</returns>
         public static string ToHexString(byte[] bytes, bool uppercase = true)
         {
-            if (bytes == null || bytes.Length == 0)
+            if (bytes == null)
+            {
+                throw new ArgumentNullException(nameof(bytes));
+            }
+
+            if (bytes.Length == 0)
             {
                 return string.Empty;
             }
 
-            StringBuilder sb = new StringBuilder(bytes.Length * 2);
-            string format = uppercase ? "X2" : "x2";
+            var hex = uppercase ? _hexUpper : _hexLower;
+            var sb = new StringBuilder(bytes.Length * 2);
 
             foreach (byte b in bytes)
             {
-                sb.Append(b.ToString(format));
+                sb.Append(hex[b >> 4]);
+                sb.Append(hex[b & 0x0F]);
             }
 
             return sb.ToString();
@@ -34,6 +44,7 @@ namespace BincopySharp.Utilities
 
         /// <summary>
         /// Converts a hexadecimal string to a byte array.
+        /// Uses direct nibble arithmetic to avoid per-byte string allocations.
         /// </summary>
         /// <param name="hexString">The hexadecimal string to convert.</param>
         /// <returns>The byte array.</returns>
@@ -52,11 +63,23 @@ namespace BincopySharp.Utilities
             byte[] bytes = new byte[hexString.Length / 2];
             for (int i = 0; i < bytes.Length; i++)
             {
-                string byteStr = hexString.Substring(i * 2, 2);
-                bytes[i] = Convert.ToByte(byteStr, 16);
+                int hi = HexCharToNibble(hexString[i * 2]);
+                int lo = HexCharToNibble(hexString[i * 2 + 1]);
+                bytes[i] = (byte)((hi << 4) | lo);
             }
 
             return bytes;
+        }
+
+        /// <summary>
+        /// Converts a single hex character to its 4-bit nibble value.
+        /// </summary>
+        private static int HexCharToNibble(char c)
+        {
+            if (c >= '0' && c <= '9') return c - '0';
+            if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+            if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+            throw new ArgumentException($"Invalid hex character: '{c}'");
         }
 
         /// <summary>

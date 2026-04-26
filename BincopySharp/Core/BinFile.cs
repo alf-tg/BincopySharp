@@ -13,6 +13,7 @@ namespace BincopySharp
         private readonly Segments _segments;
         private readonly string? _headerEncoding;
         private byte[]? _headerBytes;
+        private string? _headerTextCache;
 
         /// <summary>
         /// Gets or sets the execution start address.
@@ -20,56 +21,39 @@ namespace BincopySharp
         public ulong? ExecutionStartAddress { get; set; }
 
         /// <summary>
-        /// Gets or sets the header.
-        /// When headerEncoding is null: returns/accepts byte[] only.
-        /// When headerEncoding is set: returns/accepts string only (encodes/decodes using headerEncoding).
-        /// Internally always stored as bytes (_headerBytes).
+        /// Gets or sets the header as raw bytes.
+        /// Returns null if no header is set.
         /// </summary>
-        public object? Header
+        public byte[]? HeaderBytes
+        {
+            get => _headerBytes;
+            set
+            {
+                _headerBytes = value;
+                _headerTextCache = null;
+            }
+        }
+
+        /// <summary>
+        /// Gets the header as a decoded string using the configured header encoding.
+        /// Returns null if no header is set or no encoding is configured.
+        /// The decoded string is cached to avoid repeated Encoding.GetString() calls.
+        /// </summary>
+        public string? HeaderText
         {
             get
             {
-                if (_headerBytes == null)
+                if ((_headerBytes == null) || (_headerEncoding == null))
                 {
                     return null;
                 }
 
-                // No encoding: return raw bytes
-                if (_headerEncoding == null)
+                if (_headerTextCache == null)
                 {
-                    return _headerBytes;
-                }
-                else
-                {
-                    return Encoding.GetEncoding(_headerEncoding).GetString(_headerBytes);
-                }
-            }
-            set
-            {
-                if (value == null)
-                {
-                    _headerBytes = null;
-                    return;
+                    _headerTextCache = Encoding.GetEncoding(_headerEncoding).GetString(_headerBytes);
                 }
 
-                // No encoding: expect byte[]
-                if (_headerEncoding == null)
-                {
-                    if (!(value is byte[] bytes))
-                    {
-                        throw new ArgumentException($"Expected a byte array, but got {value.GetType()}");
-                    }
-                    _headerBytes = bytes;
-                }
-                else
-                {
-                    // Has encoding: expect string, encode to bytes
-                    if (!(value is string str))
-                    {
-                        throw new ArgumentException($"Expected a string, but got {value.GetType()}");
-                    }
-                    _headerBytes = Encoding.GetEncoding(_headerEncoding).GetBytes(str);
-                }
+                return _headerTextCache;
             }
         }
 
@@ -85,7 +69,7 @@ namespace BincopySharp
                 {
                     throw new InvalidOperationException("No data available");
                 }
-                // Convert from word address to byte address
+                // Convert from byte address to word address
                 return min.Value / (ulong)WordSizeBytes;
             }
         }
@@ -102,7 +86,7 @@ namespace BincopySharp
                 {
                     throw new InvalidOperationException("No data available");
                 }
-                // Convert from word address to byte address
+                // Convert from byte address to word address
                 return max.Value / (ulong)WordSizeBytes;
             }
         }
@@ -113,156 +97,95 @@ namespace BincopySharp
         public Segments Segments => _segments;
 
         /// <summary>
-        /// Gets or sets the word size in bits.
+        /// Gets the word size in bits. This value is immutable after construction.
         /// </summary>
-        public int WordSizeBits
-        {
-            get => _segments.WordSizeBits;
-            set => _segments.WordSizeBits = value;
-        }
+        public int WordSizeBits => _segments.WordSizeBits;
 
         /// <summary>
         /// Gets the word size in bytes (derived from WordSizeBits).
         /// </summary>
-        internal int WordSizeBytes => WordSizeBits / 8;
+        private int WordSizeBytes => WordSizeBits / 8;
 
 
         /// <summary>
         /// Initializes a new instance of the BinFile class.
         /// </summary>
-        /// <param name="wordSizeBits">The word size in bits (8, 16, 32, or 64). Default is 8.</param>
+        /// <param name="wordSizeBits">The word size in bits. Default is 8.</param>
         /// <param name="headerEncoding">The encoding used for the header. Use null for binary headers (byte[]). Default is "utf-8".</param>
-        /// <exception cref="ArgumentException">Thrown when wordSizeBits is not 8, 16, 32, or 64.</exception>
+        /// <exception cref="ArgumentException">Thrown when wordSizeBits is not a positive multiple of 8.</exception>
         public BinFile(int wordSizeBits = 8, string? headerEncoding = "utf-8")
         {
-            if (wordSizeBits != 8 && wordSizeBits != 16 && wordSizeBits != 32 && wordSizeBits != 64)
+            if ((wordSizeBits <= 0) ||
+                ((wordSizeBits % 8) != 0) ||
+                (wordSizeBits > 64))
             {
-                throw new ArgumentException($"Word size must be 8, 16, 32, or 64 bits, but got {wordSizeBits}", nameof(wordSizeBits));
+                throw new ArgumentException($"Word size must be a positive multiple of 8 bits up to 64, got {wordSizeBits}", nameof(wordSizeBits));
             }
-            
+
             _segments = new Segments(wordSizeBits);
             _headerEncoding = headerEncoding;
         }
 
         /// <summary>
-        /// Gets or sets a byte at the specified address.
+        /// Gets or sets the word value at the specified address (in words).
+        /// Bytes are interpreted in big-endian order.
+        /// Addresses that fall in a gap between segments return a word filled with 0xFF bytes.
         /// </summary>
-        /// <param name="address">The address to access.</param>
-        /// <returns>The byte at the specified address.</returns>
-        public byte this[ulong address]
+        /// <example>
+        /// With wordSizeBits=16, if the bytes at address 0 are [0xAA, 0xBB]:
+        /// <code>binFile[0] == 0xAABB</code>
+        /// </example>
+        /// <param name="address">The address in words.</param>
+        /// <returns>The word value as a <see cref="ulong"/> (big-endian).</returns>
+        public ulong this[ulong address]
         {
             get
             {
-                // Throws if address is outside [min, max)
                 ulong addrBytes = address * (ulong)WordSizeBytes;
                 ulong? minAddr = _segments.MinimumAddress;
                 ulong? maxAddr = _segments.MaximumAddress;
-                if (minAddr == null || maxAddr == null || addrBytes < minAddr.Value || addrBytes >= maxAddr.Value)
+
+                if ((minAddr == null) ||
+                    (maxAddr == null) ||
+                    (addrBytes < minAddr.Value) ||
+                    (addrBytes >= maxAddr.Value))
                 {
                     throw new IndexOutOfRangeException($"Binary file index {address} out of range");
                 }
 
-                // Check each segment for the data
-                foreach (var segment in _segments)
+                byte[] wordBytes = AsBinary(address, address + 1);
+                ulong result = 0;
+                for (int i = 0; i < WordSizeBytes; i++)
                 {
-                    if (addrBytes >= segment.MinimumAddress && addrBytes < segment.MaximumAddress)
-                    {
-                        ulong offset = (addrBytes - segment.MinimumAddress);
-                        return segment.Data[offset];
-                    }
+                    result = (result << 8) | wordBytes[i];
                 }
-
-                // Address is in a gap between segments - return padding value (0xFF)
-                return 0xFF;
+                return result;
             }
             set
             {
-                ulong addrBytes = address * (ulong)WordSizeBytes;
-
-                // Try to find existing segment
-                foreach (var segment in _segments)
+                // Validate that value fits in WordSizeBits. For 64-bit words any ulong is valid.
+                if (WordSizeBits < 64)
                 {
-                    if (addrBytes >= segment.MinimumAddress && addrBytes < segment.MaximumAddress)
+                    ulong maxValue = (1UL << WordSizeBits) - 1UL;
+                    if (value > maxValue)
                     {
-                        ulong offset = (addrBytes - segment.MinimumAddress);
-                        segment.Data[offset] = value;
-                        return;
+                        throw new ArgumentOutOfRangeException(nameof(value),
+                            $"Value 0x{value:X} does not fit in a {WordSizeBits}-bit word (max 0x{maxValue:X})");
                     }
                 }
 
-                // Create new segment with single byte
+                ulong addrBytes = address * (ulong)WordSizeBytes;
                 byte[] data = new byte[WordSizeBytes];
-                data[0] = value;
+                ulong v = value;
+                for (int i = WordSizeBytes - 1; i >= 0; i--)
+                {
+                    data[i] = (byte)(v & 0xFF);
+                    v >>= 8;
+                }
+
                 var newSegment = new Segment(addrBytes, addrBytes + (ulong)WordSizeBytes, data, WordSizeBits);
-                _segments.Add(newSegment, overwrite: false);
+                _segments.Add(newSegment, overwrite: true);
             }
-        }
-
-
-        /// <summary>
-        /// Gets bytes in the specified address range.
-        /// </summary>
-        /// <param name="startAddress">The starting address (inclusive).</param>
-        /// <param name="endAddress">The ending address (exclusive).</param>
-        /// <returns>The bytes in the specified range.</returns>
-        public byte[] GetRange(ulong startAddress, ulong endAddress)
-        {
-            if (endAddress <= startAddress)
-            {
-                return Array.Empty<byte>();
-            }
-
-            // Convert word addresses to byte addresses
-            ulong startBytes = startAddress * (ulong)WordSizeBytes;
-            ulong endBytes = endAddress * (ulong)WordSizeBytes;
-            ulong length = endBytes - startBytes;
-            byte[] result = new byte[length];
-            
-            // Initialize with 0xFF (default padding)
-            for (ulong i = 0; i < length; i++)
-            {
-                result[i] = 0xFF;
-            }
-
-            foreach (var segment in _segments)
-            {
-                if (segment.MaximumAddress <= startBytes)
-                {
-                    continue;
-                }
-                if (segment.MinimumAddress >= endBytes)
-                {
-                    break;
-                }
-
-                ulong segmentStart = Math.Max(startBytes, segment.MinimumAddress);
-                ulong segmentEnd = Math.Min(endBytes, segment.MaximumAddress);
-                ulong segmentOffset = segmentStart - segment.MinimumAddress;
-                ulong copyLength = segmentEnd - segmentStart;
-                
-                // Calculate where in the result array this segment data should go
-                ulong resultPosition = segmentStart - startBytes;
-
-                Array.Copy(segment.Data, (long)segmentOffset, result, (long)resultPosition, (long)copyLength);
-            }
-
-            return result;
-        }
-
-        /// <summary>
-        /// Sets bytes in the specified address range.
-        /// </summary>
-        /// <param name="startAddress">The starting address.</param>
-        /// <param name="data">The data to set.</param>
-        /// <exception cref="ArgumentNullException">Thrown when data is null.</exception>
-        public void SetRange(ulong startAddress, byte[] data)
-        {
-            if (data == null)
-            {
-                throw new ArgumentNullException(nameof(data));
-            }
-            
-            Add(data, startAddress, overwrite: true);
         }
 
 
@@ -291,14 +214,26 @@ namespace BincopySharp
         /// <param name="overwrite">Whether to overwrite existing data. Default is false.</param>
         public void Add(byte[] data, ulong address = 0, bool overwrite = false)
         {
-            if (data == null || data.Length == 0)
+            if (data == null)
+            {
+                throw new ArgumentNullException(nameof(data));
+            }
+
+            if (data.Length == 0)
             {
                 return;
             }
 
+            if ((data.Length % WordSizeBytes) != 0)
+            {
+                throw new ArgumentException(
+                    $"Data length ({data.Length} bytes) must be a multiple of the word size ({WordSizeBytes} bytes)",
+                    nameof(data));
+            }
+
             // Address is in words, convert to bytes
             address *= (ulong)WordSizeBytes;
-            
+
             // Create segment with addresses in bytes
             ulong maximumAddress = address + (ulong)data.Length;
             var segment = new Segment(address, maximumAddress, data, WordSizeBits);
@@ -307,7 +242,7 @@ namespace BincopySharp
 
         /// <summary>
         /// Adds data from a string by automatically detecting the format.
-        /// Supports SREC, Intel HEX, TI-TXT, VMEM, and Microchip HEX formats.
+        /// Supports SREC, Intel HEX, TI-TXT and VMEM formats.
         /// </summary>
         /// <param name="data">The data string to add.</param>
         /// <param name="overwrite">Whether to overwrite existing data. Default is false.</param>
@@ -319,30 +254,50 @@ namespace BincopySharp
             {
                 throw new ArgumentNullException(nameof(data));
             }
-            
-            var detector = new Formats.FormatDetector();
-            var result = detector.DetectAndParse(data);
 
-            // Add header if present
-            if (result.Header != null && result.Header.Length > 0)
+            var detector = new Formats.FormatDetector();
+            var parser = detector.DetectFormat(data);
+            ApplyParseResult(parser.Parse(data, WordSizeBytes), overwrite);
+        }
+
+        /// <summary>
+        /// Validates that the filename is not null or whitespace.
+        /// </summary>
+        /// <param name="filename">The filename to validate.</param>
+        /// <exception cref="ArgumentNullException">Thrown when filename is null.</exception>
+        /// <exception cref="ArgumentException">Thrown when filename is empty or whitespace.</exception>
+        private void ValidateFilename(string filename)
+        {
+            if (filename == null)
             {
-                if (_headerEncoding == null)
-                {
-                    Header = result.Header;
-                }
-                else
-                {
-                    Header = Encoding.GetEncoding(_headerEncoding).GetString(result.Header);
-                }
+                throw new ArgumentNullException(nameof(filename));
             }
 
-            // Add execution start address if present
+            if (string.IsNullOrWhiteSpace(filename))
+            {
+                throw new ArgumentException("Filename cannot be empty or whitespace", nameof(filename));
+            }
+        }
+
+/// <summary>
+        /// Applies a ParseResult to this BinFile: sets header and execution start address if present,
+        /// and adds all segments.
+        /// </summary>
+        /// <param name="result">The parse result to apply.</param>
+        /// <param name="overwrite">Whether to overwrite existing data.</param>
+        private void ApplyParseResult(ParseResult result, bool overwrite)
+        {
+            if ((result.Header != null) && (result.Header.Length > 0))
+            {
+                _headerBytes = result.Header;
+                _headerTextCache = null;
+            }
+
             if (result.ExecutionStartAddress.HasValue)
             {
                 ExecutionStartAddress = result.ExecutionStartAddress.Value;
             }
 
-            // Add all segments
             foreach (var segment in result.Segments)
             {
                 _segments.Add(segment, overwrite);
@@ -351,7 +306,9 @@ namespace BincopySharp
 
         /// <summary>
         /// Adds data from a file by automatically detecting the format.
-        /// Supports SREC, Intel HEX, TI-TXT, VMEM, ELF, Binary, and Microchip HEX formats.
+        /// Supports SREC, Intel HEX, TI-TXT, VMEM, and ELF formats.
+        /// Raw binary files are not supported — use AddBinaryFile() instead.
+        /// This is intentional: falling back to binary would silently load unrecognized or corrupt files as valid data.
         /// </summary>
         /// <param name="filename">The path to the file.</param>
         /// <param name="overwrite">Whether to overwrite existing data. Default is false.</param>
@@ -360,44 +317,23 @@ namespace BincopySharp
         /// <exception cref="UnsupportedFileFormatException">Thrown when the format cannot be detected.</exception>
         public void AddFile(string filename, bool overwrite = false)
         {
-            if (filename == null)
-            {
-                throw new ArgumentNullException(nameof(filename));
-            }
-            if (string.IsNullOrWhiteSpace(filename))
-            {
-                throw new ArgumentException("Filename cannot be empty or whitespace", nameof(filename));
-            }
-            
-            // Try to read as text first (for SREC, IHEX, TI-TXT, VMEM, Microchip HEX)
+            ValidateFilename(filename);
+
             try
             {
-                string content = File.ReadAllText(filename);
-                Add(content, overwrite);
+                Add(File.ReadAllText(filename), overwrite);
                 return;
             }
-            catch (UnsupportedFileFormatException)
-            {
-                // Not a text format, try binary formats
-            }
-            catch (DecoderFallbackException)
-            {
-                // Not a text file, try binary formats
-            }
+            catch (UnsupportedFileFormatException) { }
+            catch (DecoderFallbackException) { }
 
-            // Try ELF format
             try
             {
-                byte[] data = File.ReadAllBytes(filename);
-                AddElf(data, overwrite);
+                AddElf(File.ReadAllBytes(filename), overwrite);
                 return;
             }
-            catch (BincopyException)
-            {
-                // Not ELF format
-            }
+            catch (UnsupportedFileFormatException) { }
 
-            // If we get here, no format was recognized
             throw new UnsupportedFileFormatException(filename, "Unable to detect file format");
         }
 
@@ -423,23 +359,35 @@ namespace BincopySharp
                 throw new ArgumentException("Cannot combine BinFiles with different word sizes");
             }
 
-            var result = new BinFile(a.WordSizeBits);
+            var result = new BinFile(a.WordSizeBits, a._headerEncoding);
 
-            // Copy segments from a
+            // Deep copy segments from 'a' to avoid aliasing
             foreach (var segment in a._segments)
             {
-                result._segments.Add(segment, overwrite: false);
+                var copy = new Segment(segment.MinimumAddress, segment.MaximumAddress, segment.DataSpan.ToArray(), segment.WordSizeBits);
+                result._segments.Add(copy, overwrite: false);
             }
 
-            // Copy segments from b
+            // Deep copy segments from 'b' to avoid aliasing
             foreach (var segment in b._segments)
             {
-                result._segments.Add(segment, overwrite: false);
+                var copy = new Segment(segment.MinimumAddress, segment.MaximumAddress, segment.DataSpan.ToArray(), segment.WordSizeBits);
+                result._segments.Add(copy, overwrite: false);
             }
 
             // Preserve metadata from first file
             result.ExecutionStartAddress = a.ExecutionStartAddress ?? b.ExecutionStartAddress;
-            result.Header = a.Header ?? b.Header;
+
+            if (a._headerBytes != null)
+            {
+                result._headerBytes = (byte[])a._headerBytes.Clone();
+            }
+            else if (b._headerBytes != null)
+            {
+                result._headerBytes = (byte[])b._headerBytes.Clone();
+            }
+
+            result._headerTextCache = null;
 
             return result;
         }
@@ -451,33 +399,13 @@ namespace BincopySharp
         /// <param name="overwrite">Whether to overwrite existing data. Default is false.</param>
         public void AddSrec(string records, bool overwrite = false)
         {
+            if (records == null)
+            {
+                throw new ArgumentNullException(nameof(records));
+            }
+
             var parser = new Formats.SrecParser();
-            var result = parser.Parse(records, WordSizeBytes);
-
-            // Add header if present
-            if (result.Header != null && result.Header.Length > 0)
-            {
-                if (_headerEncoding == null)
-                {
-                    Header = result.Header;
-                }
-                else
-                {
-                    Header = Encoding.GetEncoding(_headerEncoding).GetString(result.Header);
-                }
-            }
-
-            // Add execution start address if present
-            if (result.ExecutionStartAddress.HasValue)
-            {
-                ExecutionStartAddress = result.ExecutionStartAddress.Value;
-            }
-
-            // Add all segments
-            foreach (var segment in result.Segments)
-            {
-                _segments.Add(segment, overwrite);
-            }
+            ApplyParseResult(parser.Parse(records, WordSizeBytes), overwrite);
         }
 
         /// <summary>
@@ -487,8 +415,8 @@ namespace BincopySharp
         /// <param name="overwrite">Whether to overwrite existing data. Default is false.</param>
         public void AddSrecFile(string filename, bool overwrite = false)
         {
-            string content = File.ReadAllText(filename);
-            AddSrec(content, overwrite);
+            ValidateFilename(filename);
+            AddSrec(File.ReadAllText(filename), overwrite);
         }
 
         /// <summary>
@@ -497,17 +425,14 @@ namespace BincopySharp
         /// <param name="numberOfDataBytes">The number of data bytes per record. Default is 32.</param>
         /// <param name="addressLengthBits">The address length in bits (16, 24, or 32). Default is 32.</param>
         /// <returns>A string containing the SREC records.</returns>
-        public string AsSrec(int numberOfDataBytes = 32, int addressLengthBits = 32)
+        public string AsSrec(uint numberOfDataBytes = 32, uint addressLengthBits = 32)
         {
             var serializer = new Formats.SrecSerializer();
-            
-            byte[]? headerBytes = _headerBytes;
-            
             var options = new Formats.SerializerOptions
             {
                 NumberOfDataBytes = numberOfDataBytes,
                 AddressLengthBits = addressLengthBits,
-                HeaderBytes = headerBytes,
+                HeaderBytes = _headerBytes,
                 ExecutionStartAddress = ExecutionStartAddress
             };
 
@@ -521,20 +446,13 @@ namespace BincopySharp
         /// <param name="overwrite">Whether to overwrite existing data. Default is false.</param>
         public void AddIhex(string records, bool overwrite = false)
         {
+            if (records == null)
+            {
+                throw new ArgumentNullException(nameof(records));
+            }
+
             var parser = new Formats.IhexParser();
-            var result = parser.Parse(records, WordSizeBytes);
-
-            // Add execution start address if present
-            if (result.ExecutionStartAddress.HasValue)
-            {
-                ExecutionStartAddress = result.ExecutionStartAddress.Value;
-            }
-
-            // Add all segments
-            foreach (var segment in result.Segments)
-            {
-                _segments.Add(segment, overwrite);
-            }
+            ApplyParseResult(parser.Parse(records, WordSizeBytes), overwrite);
         }
 
         /// <summary>
@@ -544,8 +462,8 @@ namespace BincopySharp
         /// <param name="overwrite">Whether to overwrite existing data. Default is false.</param>
         public void AddIhexFile(string filename, bool overwrite = false)
         {
-            string content = File.ReadAllText(filename);
-            AddIhex(content, overwrite);
+            ValidateFilename(filename);
+            AddIhex(File.ReadAllText(filename), overwrite);
         }
 
         /// <summary>
@@ -554,65 +472,9 @@ namespace BincopySharp
         /// <param name="numberOfDataBytes">The number of data bytes per record. Default is 32.</param>
         /// <param name="addressLengthBits">The address length in bits (16, 24, or 32). Default is 32.</param>
         /// <returns>A string containing the Intel HEX records.</returns>
-        public string AsIhex(int numberOfDataBytes = 32, int addressLengthBits = 32)
+        public string AsIhex(uint numberOfDataBytes = 32, uint addressLengthBits = 32)
         {
             var serializer = new Formats.IhexSerializer();
-            var options = new Formats.SerializerOptions
-            {
-                NumberOfDataBytes = numberOfDataBytes,
-                AddressLengthBits = addressLengthBits,
-                ExecutionStartAddress = ExecutionStartAddress
-            };
-
-            return serializer.Serialize(_segments, options);
-        }
-
-        /// <summary>
-        /// Adds Microchip HEX data from a string.
-        /// Microchip's HEX format is identical to Intel's except an address in
-        /// the HEX file is twice the actual machine address.
-        /// </summary>
-        /// <param name="records">The Microchip HEX records as a string.</param>
-        /// <param name="overwrite">Whether to overwrite existing data. Default is false.</param>
-        public void AddMicrochipHex(string records, bool overwrite = false)
-        {
-            var parser = new Formats.MicrochipHexParser();
-            var result = parser.Parse(records);
-
-            // Set word size to 16 bits (Microchip HEX uses 2-byte words)
-            WordSizeBits = 16;
-
-            if (result.ExecutionStartAddress.HasValue)
-            {
-                ExecutionStartAddress = result.ExecutionStartAddress.Value;
-            }
-
-            foreach (var segment in result.Segments)
-            {
-                _segments.Add(segment, overwrite);
-            }
-        }
-
-        /// <summary>
-        /// Adds Microchip HEX data from a file.
-        /// </summary>
-        /// <param name="filename">The path to the Microchip HEX file.</param>
-        /// <param name="overwrite">Whether to overwrite existing data. Default is false.</param>
-        public void AddMicrochipHexFile(string filename, bool overwrite = false)
-        {
-            string content = File.ReadAllText(filename);
-            AddMicrochipHex(content, overwrite);
-        }
-
-        /// <summary>
-        /// Converts the binary data to Microchip HEX format.
-        /// </summary>
-        /// <param name="numberOfDataBytes">The number of data bytes per record. Default is 32.</param>
-        /// <param name="addressLengthBits">The address length in bits (16, 24, or 32). Default is 32.</param>
-        /// <returns>A string containing the Microchip HEX records.</returns>
-        public string AsMicrochipHex(int numberOfDataBytes = 32, int addressLengthBits = 32)
-        {
-            var serializer = new Formats.MicrochipHexSerializer();
             var options = new Formats.SerializerOptions
             {
                 NumberOfDataBytes = numberOfDataBytes,
@@ -630,14 +492,13 @@ namespace BincopySharp
         /// <param name="overwrite">Whether to overwrite existing data. Default is false.</param>
         public void AddTiTxt(string lines, bool overwrite = false)
         {
-            var parser = new Formats.TiTxtParser();
-            var result = parser.Parse(lines, WordSizeBytes);
-
-            // Add all segments
-            foreach (var segment in result.Segments)
+            if (lines == null)
             {
-                _segments.Add(segment, overwrite);
+                throw new ArgumentNullException(nameof(lines));
             }
+
+            var parser = new Formats.TiTxtParser();
+            ApplyParseResult(parser.Parse(lines, WordSizeBytes), overwrite);
         }
 
         /// <summary>
@@ -647,8 +508,8 @@ namespace BincopySharp
         /// <param name="overwrite">Whether to overwrite existing data. Default is false.</param>
         public void AddTiTxtFile(string filename, bool overwrite = false)
         {
-            string content = File.ReadAllText(filename);
-            AddTiTxt(content, overwrite);
+            ValidateFilename(filename);
+            AddTiTxt(File.ReadAllText(filename), overwrite);
         }
 
         /// <summary>
@@ -658,8 +519,7 @@ namespace BincopySharp
         public string AsTiTxt()
         {
             var serializer = new Formats.TiTxtSerializer();
-            var options = new Formats.SerializerOptions();
-            return serializer.Serialize(_segments, options);
+            return serializer.Serialize(_segments);
         }
 
         /// <summary>
@@ -669,14 +529,13 @@ namespace BincopySharp
         /// <param name="overwrite">Whether to overwrite existing data. Default is false.</param>
         public void AddVerilogVmem(string data, bool overwrite = false)
         {
-            var parser = new Formats.VmemParser();
-            var result = parser.Parse(data, WordSizeBytes);
-
-            // Add all segments
-            foreach (var segment in result.Segments)
+            if (data == null)
             {
-                _segments.Add(segment, overwrite);
+                throw new ArgumentNullException(nameof(data));
             }
+
+            var parser = new Formats.VmemParser();
+            ApplyParseResult(parser.Parse(data, WordSizeBytes), overwrite);
         }
 
         /// <summary>
@@ -686,8 +545,8 @@ namespace BincopySharp
         /// <param name="overwrite">Whether to overwrite existing data. Default is false.</param>
         public void AddVerilogVmemFile(string filename, bool overwrite = false)
         {
-            string content = File.ReadAllText(filename);
-            AddVerilogVmem(content, overwrite);
+            ValidateFilename(filename);
+            AddVerilogVmem(File.ReadAllText(filename), overwrite);
         }
 
         /// <summary>
@@ -697,49 +556,24 @@ namespace BincopySharp
         public string AsVerilogVmem()
         {
             var serializer = new Formats.VmemSerializer();
-            
-            // VMEM only supports string headers
-            string? headerStr = null;
-            if (_headerEncoding != null && _headerBytes != null)
-            {
-                headerStr = Encoding.GetEncoding(_headerEncoding).GetString(_headerBytes);
-            }
-            
+
             var options = new Formats.SerializerOptions
             {
-                Header = headerStr
+                Header = HeaderText
             };
             return serializer.Serialize(_segments, options);
-        }
-
-        /// <summary>
-        /// Adds binary data at the specified address.
-        /// </summary>
-        /// <param name="data">The binary data to add.</param>
-        /// <param name="address">The starting address in WORDS. Default is 0.</param>
-        /// <param name="overwrite">Whether to overwrite existing data. Default is false.</param>
-        public void AddBinary(byte[] data, ulong address = 0, bool overwrite = false)
-        {
-            var parser = new Formats.BinaryParser();
-            var result = parser.ParseBinary(data, address, WordSizeBytes);
-
-            // Add all segments
-            foreach (var segment in result.Segments)
-            {
-                _segments.Add(segment, overwrite);
-            }
         }
 
         /// <summary>
         /// Adds binary data from a file at the specified address.
         /// </summary>
         /// <param name="filename">The path to the binary file.</param>
-        /// <param name="address">The starting address. Default is 0.</param>
+        /// <param name="address">The starting address in WORDS. Default is 0.</param>
         /// <param name="overwrite">Whether to overwrite existing data. Default is false.</param>
         public void AddBinaryFile(string filename, ulong address = 0, bool overwrite = false)
         {
-            byte[] data = File.ReadAllBytes(filename);
-            AddBinary(data, address, overwrite);
+            ValidateFilename(filename);
+            Add(File.ReadAllBytes(filename), address, overwrite);
         }
 
         /// <summary>
@@ -756,44 +590,19 @@ namespace BincopySharp
         }
 
         /// <summary>
-        /// Converts the binary file to a raw binary byte array with custom padding.
-        /// </summary>
-        /// <param name="minimumAddress">The minimum address (inclusive) in words. Null for segment minimum.</param>
-        /// <param name="maximumAddress">The maximum address (exclusive) in words. Null for segment maximum.</param>
-        /// <param name="padding">The padding byte array to use for gaps. Must be a word value (size = WordSizeBytes).</param>
-        /// <returns>A byte array containing the binary data.</returns>
-        public byte[] AsBinary(ulong? minimumAddress, ulong? maximumAddress, byte[] padding)
-        {
-            if (padding.Length != WordSizeBytes)
-            {
-                throw new ArgumentException($"Padding must be a word value (size {WordSizeBytes}), but got {padding.Length} bytes");
-            }
-
-            var serializer = new Formats.BinarySerializer();
-            return serializer.SerializeBinary(_segments, minimumAddress, maximumAddress, padding, WordSizeBytes);
-        }
-
-        /// <summary>
         /// Adds ELF (Executable and Linkable Format) data from a byte array.
         /// </summary>
         /// <param name="data">The ELF file data.</param>
         /// <param name="overwrite">Whether to overwrite existing data. Default is true.</param>
         public void AddElf(byte[] data, bool overwrite = true)
         {
+            if (data == null)
+            {
+                throw new ArgumentNullException(nameof(data));
+            }
+
             var parser = new Formats.ElfParser();
-            var result = parser.ParseElf(data, WordSizeBytes);
-
-            // Set execution start address if present
-            if (result.ExecutionStartAddress.HasValue)
-            {
-                ExecutionStartAddress = result.ExecutionStartAddress.Value;
-            }
-
-            // Add all segments
-            foreach (var segment in result.Segments)
-            {
-                _segments.Add(segment, overwrite);
-            }
+            ApplyParseResult(parser.ParseElf(data, WordSizeBytes), overwrite);
         }
 
         /// <summary>
@@ -803,8 +612,8 @@ namespace BincopySharp
         /// <param name="overwrite">Whether to overwrite existing data. Default is true.</param>
         public void AddElfFile(string filename, bool overwrite = true)
         {
-            byte[] data = File.ReadAllBytes(filename);
-            AddElf(data, overwrite);
+            ValidateFilename(filename);
+            AddElf(File.ReadAllBytes(filename), overwrite);
         }
 
         /// <summary>
@@ -815,14 +624,14 @@ namespace BincopySharp
         public void Fill(byte? value = null, ulong? maxWords = null)
         {
             byte fillValue = value ?? 0xFF;
-            
+
             // Create padding array for the word size
             byte[] padding = new byte[WordSizeBytes];
             for (int i = 0; i < WordSizeBytes; i++)
             {
                 padding[i] = fillValue;
             }
-            
+
             Fill(padding, maxWords);
         }
 
@@ -855,11 +664,17 @@ namespace BincopySharp
 
                     if (!maxWords.HasValue || gapSizeWords <= maxWords.Value)
                     {
-                        // Create fill data by repeating the padding word
+                        // Create fill data by repeating the padding word using block copy doubling
                         byte[] fillData = new byte[gapSize];
-                        for (ulong i = 0; i < gapSizeWords; i++)
+                        // Seed the first word
+                        Array.Copy(padding, 0, fillData, 0, WordSizeBytes);
+                        // Double using BlockCopy
+                        int filled = WordSizeBytes;
+                        while (filled < fillData.Length)
                         {
-                            Array.Copy(padding, 0, fillData, (long)(i * (ulong)WordSizeBytes), WordSizeBytes);
+                            int toCopy = Math.Min(filled, fillData.Length - filled);
+                            Buffer.BlockCopy(fillData, 0, fillData, filled, toCopy);
+                            filled += toCopy;
                         }
 
                         var fillSegment = new Segment(
@@ -891,7 +706,7 @@ namespace BincopySharp
         {
             if (maximumAddress < minimumAddress)
             {
-                throw new BincopyException("Bad address range");
+                throw new ArgumentException("Maximum address must be greater than or equal to minimum address");
             }
 
             if (maximumAddress == minimumAddress)
@@ -916,20 +731,26 @@ namespace BincopySharp
                 throw new ArgumentException("Maximum address must be greater than or equal to minimum address");
             }
 
+            if (maximumAddress == minimumAddress)
+            {
+                return;
+            }
+
+            ulong? segmentsMaxAddr = _segments.MaximumAddress;
+            if (!segmentsMaxAddr.HasValue)
+            {
+                return;
+            }
+
             ulong minAddr = minimumAddress * (ulong)WordSizeBytes;
             ulong maxAddr = maximumAddress * (ulong)WordSizeBytes;
-            
-            // Get the maximum address of all segments
-            ulong? segmentsMaxAddr = _segments.MaximumAddress;
-            
-            // Remove everything before minimum address
+
             if (minAddr > 0)
             {
                 _segments.Remove(0, minAddr);
             }
-            
-            // Remove everything after maximum address
-            if (segmentsMaxAddr.HasValue && maxAddr < segmentsMaxAddr.Value)
+
+            if (maxAddr < segmentsMaxAddr.Value)
             {
                 _segments.Remove(maxAddr, segmentsMaxAddr.Value);
             }
@@ -947,18 +768,19 @@ namespace BincopySharp
         {
             byte[] binaryData = AsBinary(minimumAddress, null, padding);
             var words = new List<string>();
+            int hexWidth = WordSizeBytes * 2; // 2 hex chars per byte: 8-bit→x2, 16-bit→x4, 32-bit→x8
 
-            for (ulong offset = 0; offset < (ulong)binaryData.Length; offset += (ulong)WordSizeBytes)
+            for (int offset = 0; offset < binaryData.Length; offset += WordSizeBytes)
             {
                 ulong word = 0;
 
-                for (ulong i = 0; i < (ulong)WordSizeBytes && (offset + i) < (ulong)binaryData.Length; i++)
+                for (int i = 0; i < WordSizeBytes && (offset + i) < binaryData.Length; i++)
                 {
                     word <<= 8;
                     word += binaryData[offset + i];
                 }
 
-                words.Add($"0x{word:x2}");
+                words.Add($"0x{word.ToString("x" + hexWidth)}");
             }
 
             return string.Join(separator, words);
@@ -1044,33 +866,22 @@ namespace BincopySharp
             return addressInBytes - (addressInBytes % 16);
         }
 
-        private string FormatHexdumpLine(ulong address, List<byte?> data)
+        private string FormatHexdumpLine(ulong address, IReadOnlyList<byte?> data)
         {
-            // Pad to 16 bytes
-            while (data.Count < 16)
-            {
-                data.Add(null);
-            }
-
             var hexdata = new List<string>();
-            foreach (var b in data)
+            for (int i = 0; i < 16; i++)
             {
-                if (b.HasValue)
-                {
-                    hexdata.Add($"{b.Value:x2}");
-                }
-                else
-                {
-                    hexdata.Add("  ");
-                }
+                byte? b = (i < data.Count) ? data[i] : null;
+                hexdata.Add(b.HasValue ? $"{b.Value:x2}" : "  ");
             }
 
             string firstHalf = string.Join(" ", hexdata.GetRange(0, 8));
             string secondHalf = string.Join(" ", hexdata.GetRange(8, 8));
 
             var text = new StringBuilder();
-            foreach (var b in data)
+            for (int i = 0; i < 16; i++)
             {
+                byte? b = (i < data.Count) ? data[i] : null;
                 if (!b.HasValue)
                 {
                     text.Append(' ');
@@ -1085,22 +896,10 @@ namespace BincopySharp
                 }
             }
 
-            return $"{address:x8}  {firstHalf,-23}  {secondHalf,-23}  |{text,-16}|";
+            return $"{address:x8}  {firstHalf}  {secondHalf}  |{text}|";
         }
 
-        private bool IsPrintable(char c)
-        {
-            // Printable characters excluding whitespace (except space)
-            if (c == ' ')
-            {
-                return true;
-            }
-            if (char.IsWhiteSpace(c))
-            {
-                return false;
-            }
-            return !char.IsControl(c) && c >= 32 && c <= 126;
-        }
+        private bool IsPrintable(char c) => (c >= 32) && (c <= 126);
 
 
 
@@ -1114,20 +913,20 @@ namespace BincopySharp
             var info = new StringBuilder();
 
             // Add header if present
-            if (Header != null)
+            if (_headerBytes != null)
             {
                 string headerDisplay;
-                if (Header is string str)
+                if (HeaderText != null)
                 {
-                    headerDisplay = $"\"{str}\"";
+                    headerDisplay = $"\"{HeaderText}\"";
                 }
-                else if (Header is byte[] bytes)
+                else
                 {
-                    // Display binary header with escape sequences
+                    // No encoding — display binary header with escape sequences
                     var sb = new StringBuilder();
-                    foreach (byte b in bytes)
+                    foreach (byte b in _headerBytes)
                     {
-                        if (b >= 32 && b <= 126 && b != '\\')  // Printable ASCII
+                        if ((b >= 32) && (b <= 126) && (b != '\\'))  // Printable ASCII
                         {
                             sb.Append((char)b);
                         }
@@ -1138,11 +937,7 @@ namespace BincopySharp
                     }
                     headerDisplay = sb.ToString();
                 }
-                else
-                {
-                    headerDisplay = Header.ToString() ?? "";
-                }
-                
+
                 info.Append($"Header:                  {headerDisplay}\n");
             }
 
@@ -1159,9 +954,9 @@ namespace BincopySharp
             foreach (var segment in _segments)
             {
                 ulong minimumAddress = segment.MinimumAddress / (ulong)WordSizeBytes;
-                ulong size = (ulong)segment.Data.Length;
-                ulong maximumAddress = minimumAddress + (size / (ulong)WordSizeBytes);
-                
+                int size = segment.Length;
+                ulong maximumAddress = minimumAddress + ((ulong)size / (ulong)WordSizeBytes);
+
                 string sizeStr = FormatSize(size);
                 info.Append($"    0x{minimumAddress:x8} - 0x{maximumAddress:x8} ({sizeStr})\n");
             }
@@ -1182,59 +977,62 @@ namespace BincopySharp
             }
 
             ulong size = MaximumAddress - MinimumAddress;
-            int width = Math.Min(80, (int)size);
+            int width = (int)Math.Min(80UL, size);
             ulong chunkAddress = MinimumAddress;
             ulong chunkSize = size / (ulong)width;
-            
+
+            if (chunkSize == 0)
+            {
+                chunkSize = 1;
+            }
+
             string minAddrStr = $"0x{MinimumAddress:x}";
             string maxAddrStr = $"0x{MaximumAddress:x}";
             int padding = Math.Max(width - minAddrStr.Length - maxAddrStr.Length, 0);
-            
+
             var output = new StringBuilder();
             output.Append($"{minAddrStr}{new string(' ', padding)}{maxAddrStr}\n");
 
             for (int i = 0; i < width; i++)
             {
-                ulong maximumAddress;
+                ulong columnMax;
                 if (i < (width - 1))
                 {
-                    maximumAddress = chunkAddress + chunkSize;
+                    columnMax = chunkAddress + chunkSize;
                 }
                 else
                 {
-                    maximumAddress = MaximumAddress;
+                    columnMax = MaximumAddress;
                 }
 
-                // Create a temporary BinFile to check this chunk
-                var chunk = new BinFile(WordSizeBits);
+                ulong coveredWords = 0;
+                ulong columnSpanWords = columnMax - chunkAddress;
+                ulong wordSizeBytes = (ulong)WordSizeBytes;
+
                 foreach (var segment in _segments)
                 {
-                    ulong segmentAddress = segment.MinimumAddress / (ulong)WordSizeBytes;
-                    ulong segmentLength = (ulong)segment.Data.Length / (ulong)WordSizeBytes;
-                    
-                    if (segmentAddress < maximumAddress && 
-                        (segmentAddress + segmentLength) > chunkAddress)
+                    ulong segmentAddress = segment.MinimumAddress / wordSizeBytes;
+                    ulong segmentLength = (ulong)segment.Length / wordSizeBytes;
+                    ulong segmentEnd = segmentAddress + segmentLength;
+
+                    if (segmentAddress >= columnMax || segmentEnd <= chunkAddress)
                     {
-                        // This segment overlaps with the chunk
-                        ulong segStart = Math.Max(segmentAddress, chunkAddress);
-                        ulong segEnd = Math.Min(segmentAddress + segmentLength, maximumAddress);
-                        
-                        if (segEnd > segStart)
-                        {
-                            ulong offset = (segStart - segmentAddress) * (ulong)WordSizeBytes;
-                            ulong length = (segEnd - segStart) * (ulong)WordSizeBytes;
-                            byte[] data = new byte[length];
-                            Array.Copy(segment.Data, (long)offset, data, 0, (long)length);
-                            chunk.Add(data, segStart, overwrite: true);
-                        }
+                        continue; // No overlap
+                    }
+
+                    ulong overlapStart = Math.Max(segmentAddress, chunkAddress);
+                    ulong overlapEnd = Math.Min(segmentEnd, columnMax);
+                    if (overlapEnd > overlapStart)
+                    {
+                        coveredWords += overlapEnd - overlapStart;
                     }
                 }
 
-                if (chunk.Length == 0)
+                if (coveredWords == 0)
                 {
                     output.Append(' ');
                 }
-                else if (chunk.Length != ((maximumAddress - chunkAddress) * (ulong)WordSizeBytes))
+                else if (coveredWords < columnSpanWords)
                 {
                     output.Append('-');
                 }
@@ -1256,7 +1054,7 @@ namespace BincopySharp
             {
                 return $"{bytes} bytes";
             }
-            else if (bytes < 1024 * 1024)
+            else if (bytes < (1024 * 1024))
             {
                 double kb = bytes / 1024.0;
                 return $"{kb:F2} KiB";
