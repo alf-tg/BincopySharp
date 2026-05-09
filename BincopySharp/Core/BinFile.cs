@@ -656,14 +656,14 @@ namespace BincopySharp
             ulong lineAddress = AlignToLine(MinimumAddress);
             var lineData = new List<byte?>();
 
-            foreach (var chunk in _segments.Chunks(16, 16))
+            foreach (var (Address, Data) in _segments.Chunks(16, 16))
             {
-                byte[] chunkData = chunk.Data;
+                byte[] chunkData = Data;
                 int chunkOffset = 0;
 
                 while (chunkOffset < chunkData.Length)
                 {
-                    ulong currentByteAddress = chunk.Address + (ulong)chunkOffset;
+                    ulong currentByteAddress = Address + (ulong)chunkOffset;
                     ulong alignedLineAddress = AlignToLine(currentByteAddress);
 
                     // If we've moved to a new line, output the previous line
