@@ -21,6 +21,8 @@
 [Tt]est[Rr]esult*/
 *.nupkg
 *.snupkg
+_site/
+api/
 *.tmp
 *.temp
 *.log
