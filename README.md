@@ -1,27 +1,21 @@
 # BincopySharp
 
-A comprehensive C# library for reading, writing, and manipulating binary files in various formats commonly used in embedded systems development. This is a complete port of the Python [bincopy](https://github.com/eerimoq/bincopy) library by Erik Moqvist.
+[![NuGet](https://img.shields.io/nuget/v/BincopySharp.svg)](https://www.nuget.org/packages/BincopySharp/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-## Features
+C# library for reading, writing, and manipulating firmware binary files. Heavily inspired by the Python [bincopy](https://github.com/eerimoq/bincopy) library by Erik Moqvist.
 
-- **Multiple Format Support**: SREC, Intel HEX, TI-TXT, Verilog VMEM, ELF, Binary, and Microchip HEX
-- **Format Conversion**: Easily convert between different binary file formats
-- **Data Manipulation**: Fill gaps, exclude ranges, crop data, and combine files
-- **Automatic Format Detection**: Load files without specifying the format
-- **Metadata Preservation**: Maintains headers and execution start addresses
-- **Cross-Platform**: 100% compatible with Windows, Linux, and macOS
+Merge, crop, fill and convert between Intel HEX, SREC, TI-TXT and ELF files with a single API.
 
-## Supported Formats
+## Supported formats
 
-| Format | Read | Write | Description |
-|--------|------|-------|-------------|
-| **Motorola S-Record (SREC)** | ✅ | ✅ | S0-S9 records with CRC validation |
-| **Intel HEX (IHEX)** | ✅ | ✅ | All record types (00-05) with checksum validation |
-| **TI-TXT** | ✅ | ✅ | Texas Instruments text format |
-| **Verilog VMEM** | ✅ | ✅ | Verilog memory initialization format |
-| **ELF** | ✅ | ❌ | Executable and Linkable Format (32/64-bit) |
-| **Binary (raw)** | ✅ | ✅ | Raw binary data |
-| **Microchip HEX** | ✅ | ✅ | Microchip variant of Intel HEX |
+| Format | Read | Write | Notes |
+|--------|:----:|:-----:|-------|
+| Intel HEX | ✅ | ✅ | I8HEX (16-bit), I16HEX (20-bit), I32HEX (32-bit) variants |
+| Motorola S-Record (SREC) | ✅ | ✅ | S19 (16-bit), S28 (24-bit), S37 (32-bit) variants |
+| TI-TXT | ✅ | ✅ | MSP430 / TI tooling format |
+| ELF | ✅ | ❌ | Loads `PT_LOAD` segments only |
+| Raw binary | ✅ | ✅ | Not auto-detected — use `AddBinaryFile()` explicitly |
 
 ## Installation
 
@@ -29,303 +23,238 @@ A comprehensive C# library for reading, writing, and manipulating binary files i
 dotnet add package BincopySharp
 ```
 
-Or add to your `.csproj`:
+Or via the NuGet Package Manager:
 
-```xml
-<PackageReference Include="BincopySharp" Version="1.0.0" />
+```powershell
+Install-Package BincopySharp
 ```
 
-## Quick Start
+**Requirements:** .NET Standard 2.0 (works on .NET Framework 4.6.1+, .NET Core 2.0+, .NET 5+).
 
-### Basic Usage
+## Quick start
 
 ```csharp
 using BincopySharp;
 
-// Load Intel HEX file
-var binFile = new BinFile();
-binFile.AddIhexFile("firmware.hex");
+var bin = new BinFile();
+bin.AddIhexFile("firmware.hex");
 
-// Convert to Motorola S-Record
-string srec = binFile.AsSrec();
-Console.WriteLine(srec);
+Console.WriteLine($"Range: 0x{bin.MinimumAddress:X} - 0x{bin.MaximumAddress:X}");
+Console.WriteLine($"Total bytes: {bin.Length}");
 
-// Save as binary
-byte[] binary = binFile.AsBinary();
-File.WriteAllBytes("firmware.bin", binary);
+// Convert to a different format
+File.WriteAllText("firmware.srec", bin.AsSrec());
+File.WriteAllBytes("firmware.bin", bin.AsBinary());
 ```
 
-### Automatic Format Detection
+## Real-world example: merging bootloader and application
+
+A typical embedded workflow — load two separate HEX files, verify they don't overlap, fill gaps with `0xFF`, and emit a single binary for the programmer:
 
 ```csharp
-// Load any supported format automatically
-var binFile = new BinFile();
-binFile.AddFile("firmware.hex");  // Format detected automatically
+using BincopySharp;
 
-// Get information about the file
-Console.WriteLine(binFile.Info());
+// Load both files into the same BinFile
+var firmware = new BinFile();
+firmware.AddIhexFile("bootloader.hex");
+firmware.AddIhexFile("application.hex");  // throws AddDataException if addresses overlap
+
+Console.WriteLine(firmware.Info());
+// Header:                  MyProduct v2.1
+// Data ranges:
+//     0x08000000 - 0x08004000 (16.00 KiB)   <- bootloader
+//     0x08008000 - 0x08020000 (96.00 KiB)   <- application
+
+Console.WriteLine(firmware.Layout());
+// 0x8000000                                              0x8020000
+// ====    ================================================
+
+// Fill the gap between bootloader and application with 0xFF
+firmware.Fill(0xFF);
+
+// Write final binary starting at the base address
+File.WriteAllBytes("firmware_full.bin", firmware.AsBinary());
+
+// Or convert to SREC for a different programmer
+File.WriteAllText("firmware_full.srec", firmware.AsSrec());
 ```
 
-### Format Conversion
+Alternative: build each `BinFile` separately and combine them with the `+` operator:
 
 ```csharp
-// Convert Intel HEX to Motorola S-Record
-var binFile = new BinFile();
-binFile.AddIhexFile("input.hex");
-File.WriteAllText("output.srec", binFile.AsSrec());
+var bootloader = new BinFile();
+bootloader.AddIhexFile("bootloader.hex");
 
-// Convert SREC to binary
-var binFile2 = new BinFile();
-binFile2.AddSrecFile("input.srec");
-File.WriteAllBytes("output.bin", binFile2.AsBinary());
+var app = new BinFile();
+app.AddIhexFile("application.hex");
+
+var firmware = bootloader + app;  // throws AddDataException if addresses overlap
 ```
 
-### Data Manipulation
+## Public API reference
+
+### Constructor
 
 ```csharp
-var binFile = new BinFile();
-binFile.AddIhexFile("firmware.hex");
-
-// Fill gaps between segments with 0xFF
-binFile.Fill(0xFF);
-
-// Exclude a specific address range
-binFile.Exclude(0x1000, 0x2000);
-
-// Keep only a specific range
-binFile.Crop(0x0000, 0x10000);
-
-// Combine two binary files
-var file1 = new BinFile();
-file1.AddIhexFile("bootloader.hex");
-
-var file2 = new BinFile();
-file2.AddIhexFile("application.hex");
-
-var combined = file1 + file2;
+new BinFile(string? headerEncoding = "utf-8")
 ```
 
-### Working with Segments
+- `headerEncoding` — text encoding used by `HeaderText`. Pass `null` to disable text headers (use `HeaderBytes` only).
+
+### Loading data
+
+| Method | Purpose |
+|--------|---------|
+| `Add(byte[] data, ulong address = 0, bool overwrite = false)` | Add raw bytes at an address. |
+| `Add(string data, bool overwrite = false)` | Auto-detect SREC / IHEX / TI-TXT and add. |
+| `AddFile(string filename, bool overwrite = false)` | Auto-detect format from file content (text formats and ELF). |
+| `AddBinaryFile(string filename, ulong address = 0, bool overwrite = false)` | Load a raw `.bin` file at an address (no auto-detection). |
+| `AddSrec(string records, bool overwrite = false)` / `AddSrecFile(string filename, ...)` | Force SREC parsing. |
+| `AddIhex(string records, bool overwrite = false)` / `AddIhexFile(string filename, ...)` | Force Intel HEX parsing. |
+| `AddTiTxt(string lines, bool overwrite = false)` / `AddTiTxtFile(string filename, ...)` | Force TI-TXT parsing. |
+| `AddElf(byte[] data, bool overwrite = true)` / `AddElfFile(string filename, ...)` | Load `PT_LOAD` segments from an ELF. |
+
+> When `overwrite` is `false` (default), adding data that overlaps existing addresses throws `AddDataException` with the conflicting address.
+
+### Exporting data
+
+| Method | Returns |
+|--------|---------|
+| `AsBinary(ulong? min = null, ulong? max = null, byte padding = 0xFF)` | `byte[]` — raw binary, gaps filled with `padding`. |
+| `AsSrec(int numberOfDataBytes = 32, SrecVariant variant = S37)` | `string` — Motorola S-Record. |
+| `AsIhex(int numberOfDataBytes = 32, IhexVariant variant = I32Hex)` | `string` — Intel HEX. |
+| `AsTiTxt()` | `string` — TI-TXT. |
+| `AsArray(ulong? min = null, byte padding = 0xFF, string separator = ", ")` | `string` — comma-separated bytes for embedding in C/C++ source. |
+| `AsHexdump()` | `string` — `xxd`-style hexdump. |
+| `Info()` | `string` — human-readable header / segments summary. |
+| `Layout()` | `string` — ASCII visual map of address space. |
+
+#### Format variants
 
 ```csharp
-var binFile = new BinFile();
-binFile.AddIhexFile("firmware.hex");
-
-// Iterate over segments
-foreach (var segment in binFile.Segments)
+// Intel HEX
+public enum IhexVariant
 {
-    Console.WriteLine($"Segment: 0x{segment.MinimumAddress:X8} - 0x{segment.MaximumAddress:X8}");
-    Console.WriteLine($"Length: {segment.Length} words");
+    I8Hex,    // 16-bit addresses, up to 64 KB.
+    I16Hex,   // 20-bit addresses via extended segment records, up to 1 MB.
+    I32Hex,   // 32-bit addresses via extended linear records, up to 4 GB. (default)
 }
 
-// Access data by address
-byte value = binFile[0x1000];
-binFile[0x1000] = 0x42;
-
-// Get a range of data
-byte[] data = binFile.GetRange(0x1000, 0x2000);
+// Motorola S-Record
+public enum SrecVariant
+{
+    S19,   // S1 data + S9 terminator — 16-bit addresses (up to 64 KB).
+    S28,   // S2 data + S8 terminator — 24-bit addresses (up to 16 MB).
+    S37,   // S3 data + S7 terminator — 32-bit addresses (up to 4 GB). (default)
+}
 ```
 
-### Export Formats
+### Manipulation
+
+| Method | Purpose |
+|--------|---------|
+| `Fill(byte? value = null, int? maxBytes = null)` | Fill all gaps with `value` (default `0xFF`). Skip gaps larger than `maxBytes` if specified. |
+| `Crop(ulong min, ulong max)` | Discard data outside `[min, max)`. |
+| `Exclude(ulong min, ulong max)` | Discard data inside `[min, max)`. |
+| `bin[ulong address]` | Indexer — read or write a single byte. Reading throws on out-of-range. |
+| `bin1 + bin2` | Combine two `BinFile`s into a new one (non-overlapping). |
+
+### Properties
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `MinimumAddress` | `ulong` | Lowest address with data. Throws if empty. |
+| `MaximumAddress` | `ulong` | Highest address with data + 1 (exclusive). Throws if empty. |
+| `Length` | `int` | Total bytes across all segments. |
+| `Segments` | `Segments` | Iterable collection of `Segment` objects. |
+| `HeaderBytes` | `byte[]?` | Raw header bytes (used in SREC `S0`, etc.). |
+| `HeaderText` | `string?` | Same as `HeaderBytes` but decoded with the configured encoding. |
+| `ExecutionStartAddress` | `ulong?` | Entry-point address (used in SREC `S7/S8/S9` and IHEX type 03/05 records). |
+
+### Iterating segments
 
 ```csharp
-var binFile = new BinFile();
-binFile.AddIhexFile("firmware.hex");
-
-// Export as C array
-string cArray = binFile.AsArray();
-// Output: "0x21, 0x46, 0x01, 0x36, ..."
-
-// Export as hexdump
-string hexdump = binFile.AsHexdump();
-// Output:
-// 00000100  21 46 01 36 01 21 47 01  36 00 7e fe 09 d2 19 01  |!F.6.!G.6.~.....|
-// 00000110  21 46 01 7e 17 c2 00 01  ff 5f 16 00 21 48 01 19  |!F.~....._..!H..|
-
-// Get memory layout visualization
-string layout = binFile.Layout();
-// Output:
-// 0x100                                                      0x140
-// ================================================================
+foreach (var segment in bin.Segments)
+{
+    Console.WriteLine(
+        $"0x{segment.MinimumAddress:X8} - 0x{segment.MaximumAddress:X8}  ({segment.Length} bytes)");
+}
 ```
 
-### Metadata Handling
+### Header and execution start address
 
 ```csharp
-var binFile = new BinFile();
-binFile.AddSrecFile("firmware.srec");
+var bin = new BinFile(headerEncoding: "utf-8");
+bin.AddIhexFile("firmware.hex");
 
-// Access metadata
-Console.WriteLine($"Header: {binFile.Header}");
-Console.WriteLine($"Execution Start: 0x{binFile.ExecutionStartAddress:X8}");
+bin.HeaderText = "MyProduct v2.1";          // emitted as SREC S0 record
+bin.ExecutionStartAddress = 0x08000200;     // emitted as SREC S7/S8/S9 or IHEX type 05 record
 
-// Set metadata
-binFile.Header = "My Firmware v1.0";
-binFile.ExecutionStartAddress = 0x08000000;
-
-// Metadata is preserved during format conversion
-string ihex = binFile.AsIhex();
+File.WriteAllText("firmware.srec", bin.AsSrec());
 ```
 
-### Error Handling
+## Error handling
+
+All exceptions inherit from `BincopyException`:
 
 ```csharp
+public class BincopyException : Exception { }
+
+public class AddDataException : BincopyException
+{
+    public ulong ConflictAddress { get; }
+}
+
+public class UnsupportedFileFormatException : BincopyException
+{
+    public string? Filename { get; }
+}
+
+public class InvalidRecordException : BincopyException
+{
+    public string Record { get; }
+    public int? ExpectedValue { get; }   // e.g. expected CRC byte
+    public int? ActualValue { get; }     // e.g. actual CRC byte found
+}
+```
+
+### Examples
+
+```csharp
+// Overlapping data
 try
 {
-    var binFile = new BinFile();
-    binFile.AddFile("unknown.dat");
-}
-catch (UnsupportedFileFormatException ex)
-{
-    Console.WriteLine($"Unsupported format: {ex.Message}");
-}
-
-try
-{
-    var binFile = new BinFile();
-    binFile.Add(data, address: 0x1000, overwrite: false);
-    binFile.Add(moreData, address: 0x1000, overwrite: false);  // Conflict!
+    bin.Add(data, address: 0x1000, overwrite: false);
+    bin.Add(moreData, address: 0x1000, overwrite: false);  // same address
 }
 catch (AddDataException ex)
 {
-    Console.WriteLine($"Data conflict at address: 0x{ex.ConflictAddress:X}");
+    Console.WriteLine($"Conflict at 0x{ex.ConflictAddress:X}");
 }
 
+// Unknown format
 try
 {
-    var binFile = new BinFile();
-    binFile.AddIhex(":00000001FF");  // Invalid checksum
+    bin.AddFile("unknown.dat");
+}
+catch (UnsupportedFileFormatException ex)
+{
+    Console.WriteLine(ex.Message);
+}
+
+// Corrupted record (bad CRC, malformed)
+try
+{
+    bin.AddSrec(corruptedRecord);
 }
 catch (InvalidRecordException ex)
 {
-    Console.WriteLine($"Invalid record: {ex.Record}");
-    Console.WriteLine($"Expected: {ex.ExpectedValue}, Got: {ex.ActualValue}");
+    Console.WriteLine($"Bad record '{ex.Record}': expected 0x{ex.ExpectedValue:X2}, got 0x{ex.ActualValue:X2}");
 }
 ```
 
-## Advanced Features
-
-### Word Size Support
-
-```csharp
-// Work with 16-bit words
-var binFile = new BinFile(wordSizeBytes: 2);
-binFile.AddBinary(data, address: 0);
-
-// Work with 32-bit words
-var binFile32 = new BinFile(wordSizeBytes: 4);
-```
-
-### Configurable Output
-
-```csharp
-// Customize SREC output
-string srec = binFile.AsSrec(
-    numberOfDataBytes: 16,      // 16 bytes per line
-    addressLengthBits: 32       // 32-bit addresses (S3/S7)
-);
-
-// Customize Intel HEX output
-string ihex = binFile.AsIhex(
-    numberOfDataBytes: 16,      // 16 bytes per line
-    addressLengthBits: 32       // Use extended addressing
-);
-
-// Customize binary output
-byte[] binary = binFile.AsBinary(
-    minimumAddress: 0x0000,     // Start address
-    maximumAddress: 0x10000,    // End address
-    padding: 0xFF               // Fill byte for gaps
-);
-```
-
-## Requirements
-
-- **.NET Standard 2.0** or higher
-- Compatible with:
-  - .NET Framework 4.6.1+
-  - .NET Core 2.0+
-  - .NET 5, 6, 7, 8+
-  - Mono
-  - Xamarin
-
-### Dependencies
-
-- **ELFSharp** (v2.17.3+) - Required for ELF format support
-
-## Platform Compatibility
-
-BincopySharp is **100% cross-platform** and can run on:
-
-- ✅ **Windows** (x86, x64, ARM64)
-- ✅ **Linux** (x64, ARM, ARM64)
-- ✅ **macOS** (x64, ARM64/Apple Silicon)
-- ✅ Any platform supporting .NET Standard 2.0
-
-The library:
-- Uses only platform-agnostic .NET Standard 2.0 APIs
-- Has no dependencies on Windows-specific features
-- Uses `Path.DirectorySeparatorChar` for cross-platform path handling
-- Contains no P/Invoke or native code
-- All dependencies (ELFSharp) are also cross-platform
-
-## Differences from Python bincopy
-
-This C# port maintains API compatibility with the Python version where possible, with these adaptations:
-
-### Naming Conventions
-- Python: `add_ihex()` → C#: `AddIhex()`
-- Python: `as_srec()` → C#: `AsSrec()`
-- Python: `minimum_address` → C#: `MinimumAddress`
-
-### Type System
-- Python uses dynamic typing; C# uses strong typing
-- Python `None` → C# `null` for nullable types
-- Python exceptions → C# exceptions with proper inheritance
-
-### Not Included
-The following command-line tools from the Python version are **not included** in this library port:
-- `bincopy info` - Use the `Info()` method instead
-- `bincopy convert` - Use format-specific methods (`AsSrec()`, `AsIhex()`, etc.)
-- `bincopy pretty` - Not applicable to library usage
-- `bincopy fill` - Use the `Fill()` method instead
-
-For command-line functionality, please use the original Python [bincopy](https://github.com/eerimoq/bincopy) tool.
-
-## API Reference
-
-For detailed API documentation, see [API_REFERENCE.md](API_REFERENCE.md).
-
-## Examples
-
-See the `examples/` directory for more usage examples.
-
-## Contributing
-
-Contributions are welcome! Please ensure:
-- Code follows C# naming conventions
-- All public APIs have XML documentation comments
-- Code is cross-platform compatible (no Windows-specific APIs)
-- Tests pass on Windows, Linux, and macOS
+> **Note on addresses:** all addresses in BincopySharp are **byte addresses** (`ulong`), never word addresses, regardless of format.
 
 ## License
 
-MIT License
-
-Copyright (c) 2024 BincopySharp Contributors
-
-This is a port of the Python bincopy library:
-- Original Author: Erik Moqvist
-- Original Project: https://github.com/eerimoq/bincopy
-
-## Acknowledgments
-
-- **Erik Moqvist** - Original Python bincopy library
-- **ELFSharp** - ELF file parsing library
-
-## Links
-
-- **Original Python Project**: https://github.com/eerimoq/bincopy
-- **ELFSharp**: https://github.com/konrad-kruczynski/elfsharp
-- **Documentation**: [API_REFERENCE.md](API_REFERENCE.md)
-- **Platform Compatibility Guide**: [PLATFORM_COMPATIBILITY.md](PLATFORM_COMPATIBILITY.md)
+MIT. Heavily inspired by [bincopy](https://github.com/eerimoq/bincopy) by Erik Moqvist.

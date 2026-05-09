@@ -6,8 +6,8 @@
     <LangVersion>8.0</LangVersion>
     <Nullable>enable</Nullable>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
-    <Authors>Alfonso (Port from Python bincopy by Erik Moqvist)</Authors>
-    <Description>C# library for reading and writing binary files in various formats (Motorola S-Record, Intel HEX, TI-TXT, Verilog VMEM, ELF, and binary files). Port of the Python bincopy library.</Description>
+    <Authors>Alfonso Toledo</Authors>
+    <Description>C# library for reading and writing binary files in various formats (Motorola S-Record, Intel HEX, TI-TXT, ELF, and binary files). Heavily inspired by the Python bincopy library by Erik Moqvist.</Description>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/YOUR-ORG/BincopySharp</PackageProjectUrl>
     <RepositoryUrl>https://github.com/YOUR-ORG/BincopySharp</RepositoryUrl>
