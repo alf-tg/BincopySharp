@@ -1,0 +1,31 @@
+{
+  "metadata": [
+    {
+      "src": [
+        {
+          "src": "../BincopySharp",
+          "files": [ "**/*.csproj" ]
+        }
+      ],
+      "dest": "api",
+      "includePrivateMembers": false
+    }
+  ],
+  "build": {
+    "content": [
+      {
+        "files": [ "**/*.{md,yml}" ],
+        "exclude": [ "_site/**" ]
+      }
+    ],
+    "resource": [],
+    "output": "_site",
+    "template": [ "default", "modern" ],
+    "globalMetadata": {
+      "_appName": "BincopySharp",
+      "_appTitle": "BincopySharp",
+      "_enableSearch": true,
+      "pdf": false
+    }
+  }
+}

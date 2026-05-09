@@ -1,7 +1,7 @@
 # BincopySharp
 
 [![NuGet](https://img.shields.io/nuget/v/BincopySharp.svg)](https://www.nuget.org/packages/BincopySharp/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)
 
 C# library for reading, writing, and manipulating firmware binary files. Heavily inspired by the Python [bincopy](https://github.com/eerimoq/bincopy) library by Erik Moqvist.
 
