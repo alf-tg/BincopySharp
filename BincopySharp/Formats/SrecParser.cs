@@ -8,11 +8,9 @@ namespace BincopySharp.Formats
     /// <summary>
     /// Parser for Motorola S-Record (SREC) format files.
     /// </summary>
-    internal class SrecParser : IFormatParser
+    internal static class SrecParser
     {
-        public string FormatName => "SREC";
-
-        public bool CanParse(string data)
+        internal static bool CanParse(string data)
         {
             if (string.IsNullOrWhiteSpace(data))
             {
@@ -20,41 +18,34 @@ namespace BincopySharp.Formats
             }
 
             // Get first non-empty line
-            using (var reader = new StringReader(data))
+            using var reader = new StringReader(data);
+            string? line;
+            while ((line = reader.ReadLine()) != null)
             {
-                string? line;
-                while ((line = reader.ReadLine()) != null)
+                line = line.Trim();
+                if (!string.IsNullOrEmpty(line))
                 {
-                    line = line.Trim();
-                    if (!string.IsNullOrEmpty(line))
+                    // SREC records start with 'S' followed by a digit
+                    if ((line.Length >= 2) && (line[0] == 'S') && (char.IsDigit(line[1])))
                     {
-                        // SREC records start with 'S' followed by a digit
-                        if (line.Length >= 2 && line[0] == 'S' && char.IsDigit(line[1]))
+                        try
                         {
-                            try
-                            {
-                                UnpackSrec(line);
-                                return true;
-                            }
-                            catch
-                            {
-                                return false;
-                            }
+                            UnpackSrec(line);
+                            return true;
                         }
-                        return false;
+                        catch
+                        {
+                            return false;
+                        }
                     }
+                    return false;
                 }
             }
 
             return false;
         }
 
-        public ParseResult Parse(string data)
-        {
-            return Parse(data, 1); // Default word size
-        }
-
-        public ParseResult Parse(string data, int wordSizeBytes)
+        public static ParseResult Parse(string data)
         {
             if (string.IsNullOrWhiteSpace(data))
             {
@@ -62,7 +53,6 @@ namespace BincopySharp.Formats
             }
 
             var result = new ParseResult();
-            int wordSizeBits = wordSizeBytes * 8;
 
             // Accumulator for merging consecutive data records into a single segment
             ulong accumMinAddr = 0;
@@ -82,20 +72,20 @@ namespace BincopySharp.Formats
                         continue;
                     }
 
-                    var (type, address, size, recordData) = UnpackSrec(line);
+                    var (type, address, recordData) = UnpackSrec(line);
 
                     if (type == '0')
                     {
                         // S0 record contains header
                         result.Header = recordData;
                     }
-                    else if (type == '1' || type == '2' || type == '3')
+                    else if ((type == '1') || (type == '2') || (type == '3'))
                     {
                         // S1, S2, S3 records contain data
-                        ulong segmentAddress = address * (ulong)wordSizeBytes;
-                        ulong segmentMaxAddress = segmentAddress + (ulong)size;
+                        ulong segmentAddress = address;
+                        ulong segmentMaxAddress = segmentAddress + (ulong)recordData.Length;
 
-                        if (accumData != null && segmentAddress == accumMaxAddr)
+                        if ((accumData != null) && (segmentAddress == accumMaxAddr))
                         {
                             accumData.AddRange(recordData);
                             accumMaxAddr = segmentMaxAddress;
@@ -104,14 +94,14 @@ namespace BincopySharp.Formats
                         {
                             if (accumData != null)
                             {
-                                result.Segments.Add(new Segment(accumMinAddr, accumMaxAddr, accumData.ToArray(), wordSizeBits));
+                                result.Segments.Add(new Segment(accumMinAddr, accumMaxAddr, accumData.ToArray()));
                             }
                             accumData = new List<byte>(recordData);
                             accumMinAddr = segmentAddress;
                             accumMaxAddr = segmentMaxAddress;
                         }
                     }
-                    else if (type == '7' || type == '8' || type == '9')
+                    else if ((type == '7') || (type == '8') || (type == '9'))
                     {
                         // S7, S8, S9 records contain execution start address
                         result.ExecutionStartAddress = address;
@@ -123,13 +113,13 @@ namespace BincopySharp.Formats
             // Flush remaining accumulator
             if (accumData != null)
             {
-                result.Segments.Add(new Segment(accumMinAddr, accumMaxAddr, accumData.ToArray(), wordSizeBits));
+                result.Segments.Add(new Segment(accumMinAddr, accumMaxAddr, accumData.ToArray()));
             }
 
             return result;
         }
 
-        private (char Type, ulong Address, int Size, byte[] Data) UnpackSrec(string record)
+        private static (char type, ulong address, byte[] data) UnpackSrec(string record)
         {
             // Minimum STSSCC, where T is type, SS is size and CC is crc
             if (record.Length < 6)
@@ -145,24 +135,24 @@ namespace BincopySharp.Formats
             char type = record[1];
 
             // Parse hex data starting from position 2
-            byte[] value;
+            byte[] recordBytes;
             try
             {
-                value = HexConverter.FromHexString(record.Substring(2));
+                recordBytes = HexConverter.FromHexString(record.Substring(2));
             }
             catch
             {
                 throw new InvalidRecordException(record, $"Invalid hex data in record '{record}'");
             }
 
-            if (value.Length < 2)
+            if (recordBytes.Length < 2)
             {
                 throw new InvalidRecordException(record, $"Record '{record}' too short");
             }
 
-            int size = value[0];
+            int size = recordBytes[0];
 
-            if (size != value.Length - 1)
+            if (size != (recordBytes.Length - 1))
             {
                 throw new InvalidRecordException(record, $"Record '{record}' has wrong size");
             }
@@ -187,27 +177,24 @@ namespace BincopySharp.Formats
             }
 
             int dataOffset = 1 + width;
-            
+
             // Extract address bytes and convert to ulong
             byte[] addressBytes = new byte[width];
-            Array.Copy(value, 1, addressBytes, 0, width);
+            Array.Copy(recordBytes, 1, addressBytes, 0, width);
             ulong address = HexConverter.UInt64FromBigEndian(addressBytes);
 
             // Extract data (everything except size, address, and CRC)
-            int dataLength = value.Length - dataOffset - 1;
-            if (dataLength < 0) 
+            int dataLength = recordBytes.Length - dataOffset - 1;
+            if (dataLength < 0)
             {
                 dataLength = 0;
             }
             byte[] data = new byte[dataLength];
-            if (dataLength > 0)
-            {
-                Array.Copy(value, dataOffset, data, 0, dataLength);
-            }
+            Array.Copy(recordBytes, dataOffset, data, 0, dataLength);
 
             // Validate CRC
-            byte actualCrc = value[value.Length - 1];
-            byte expectedCrc = CrcCalculator.CalculateSrecCrc(record.Substring(2, record.Length - 4));
+            byte actualCrc = recordBytes[recordBytes.Length - 1];
+            byte expectedCrc = SrecCrcCalculator.CalculateFromHexString(record.Substring(2, record.Length - 4));
 
             if (actualCrc != expectedCrc)
             {
@@ -218,7 +205,7 @@ namespace BincopySharp.Formats
                     actualCrc);
             }
 
-            return (type, address, dataLength, data);
+            return (type, address, data);
         }
     }
 }

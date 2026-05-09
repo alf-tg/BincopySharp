@@ -8,39 +8,54 @@ namespace BincopySharp.Formats
     /// <summary>
     /// Parser for TI-TXT format files.
     /// </summary>
-    internal class TiTxtParser : IFormatParser
+    internal static class TiTxtParser
     {
         private const int TI_TXT_BYTES_PER_LINE = 16;
 
-        public string FormatName => "TI-TXT";
-
-        public bool CanParse(string data)
+        internal static bool CanParse(string data)
         {
             if (string.IsNullOrWhiteSpace(data))
             {
                 return false;
             }
 
-            try
+            // Check first non-empty line only - O(1) like SrecParser and IhexParser.
+            // A valid TI-TXT file starts with an address directive: '@' followed by hex digits.
+            using var reader = new StringReader(data);
+            string? line;
+            while ((line = reader.ReadLine()) != null)
             {
-                Parse(data);
-                return true;
+                line = line.Trim();
+                if (!string.IsNullOrEmpty(line))
+                {
+                    if ((line[0] != '@') || (line.Length < 2))
+                    {
+                        return false;
+                    }
+
+                    try
+                    {
+                        Convert.ToUInt64(line.Substring(1), 16);
+                        return true;
+                    }
+                    catch
+                    {
+                        return false;
+                    }
+                }
             }
-            catch
-            {
-                return false;
-            }
+
+            return false;
         }
 
-        public ParseResult Parse(string data)
+        public static ParseResult Parse(string data)
         {
-            return Parse(data, 1);
-        }
+            if (string.IsNullOrWhiteSpace(data))
+            {
+                throw new BincopyException("Cannot parse empty TI-TXT data");
+            }
 
-        public ParseResult Parse(string data, int wordSizeBytes)
-        {
             var result = new ParseResult();
-            int wordSizeBits = wordSizeBytes * 8;
             ulong? address = null;
             bool eofFound = false;
 
@@ -76,7 +91,7 @@ namespace BincopySharp.Formats
                         // Flush accumulator before new address directive
                         if (accumData != null)
                         {
-                            result.Segments.Add(new Segment(accumMinAddr, accumMaxAddr, accumData.ToArray(), wordSizeBits));
+                            result.Segments.Add(new Segment(accumMinAddr, accumMaxAddr, accumData.ToArray()));
                             accumData = null;
                         }
 
@@ -103,9 +118,7 @@ namespace BincopySharp.Formats
                             throw new BincopyException("Bad data");
                         }
 
-                        int size = lineData.Length;
-
-                        if (size > TI_TXT_BYTES_PER_LINE)
+                        if (lineData.Length > TI_TXT_BYTES_PER_LINE)
                         {
                             throw new BincopyException("Bad line length");
                         }
@@ -115,11 +128,11 @@ namespace BincopySharp.Formats
                             throw new BincopyException("Missing section address");
                         }
 
-                        ulong segmentAddress = address.Value * (ulong)wordSizeBytes;
-                        ulong segmentMaxAddress = segmentAddress + (ulong)size;
+                        ulong segmentAddress = address.Value;
+                        ulong segmentMaxAddress = segmentAddress + (ulong)lineData.Length;
 
                         // Accumulate consecutive lines into one segment
-                        if (accumData != null && segmentAddress == accumMaxAddr)
+                        if ((accumData != null) && (segmentAddress == accumMaxAddr))
                         {
                             accumData.AddRange(lineData);
                             accumMaxAddr = segmentMaxAddress;
@@ -128,16 +141,16 @@ namespace BincopySharp.Formats
                         {
                             if (accumData != null)
                             {
-                                result.Segments.Add(new Segment(accumMinAddr, accumMaxAddr, accumData.ToArray(), wordSizeBits));
+                                result.Segments.Add(new Segment(accumMinAddr, accumMaxAddr, accumData.ToArray()));
                             }
                             accumData = new List<byte>(lineData);
                             accumMinAddr = segmentAddress;
                             accumMaxAddr = segmentMaxAddress;
                         }
 
-                        if (size == TI_TXT_BYTES_PER_LINE)
+                        if (lineData.Length == TI_TXT_BYTES_PER_LINE)
                         {
-                            address = address.Value + (ulong)(size / wordSizeBytes);
+                            address = address.Value + (ulong)lineData.Length;
                         }
                         else
                         {
@@ -150,7 +163,7 @@ namespace BincopySharp.Formats
             // Flush remaining accumulator
             if (accumData != null)
             {
-                result.Segments.Add(new Segment(accumMinAddr, accumMaxAddr, accumData.ToArray(), wordSizeBits));
+                result.Segments.Add(new Segment(accumMinAddr, accumMaxAddr, accumData.ToArray()));
             }
 
             if (!eofFound)

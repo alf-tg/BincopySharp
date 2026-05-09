@@ -55,7 +55,7 @@ namespace BincopySharp.Utilities
                 return Array.Empty<byte>();
             }
 
-            if (hexString.Length % 2 != 0)
+            if ((hexString.Length % 2) != 0)
             {
                 throw new ArgumentException("Hex string must have even length", nameof(hexString));
             }
@@ -76,9 +76,18 @@ namespace BincopySharp.Utilities
         /// </summary>
         private static int HexCharToNibble(char c)
         {
-            if (c >= '0' && c <= '9') return c - '0';
-            if (c >= 'A' && c <= 'F') return c - 'A' + 10;
-            if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+            if ((c >= '0') && (c <= '9'))
+            {
+                return c - '0';
+            }
+            if ((c >= 'A') && (c <= 'F'))
+            {
+                return c - 'A' + 10;
+            }
+            if ((c >= 'a') && (c <= 'f'))
+            {
+                return c - 'a' + 10;
+            }
             throw new ArgumentException($"Invalid hex character: '{c}'");
         }
 
@@ -89,7 +98,7 @@ namespace BincopySharp.Utilities
         /// <returns>The 64-bit unsigned integer value in native format.</returns>
         public static ulong UInt64FromBigEndian(byte[] bytes)
         {
-            if (bytes == null || bytes.Length == 0)
+            if ((bytes == null) || (bytes.Length == 0))
             {
                 return 0;
             }
@@ -101,6 +110,44 @@ namespace BincopySharp.Utilities
             }
 
             return result;
+        }
+
+        /// <summary>
+        /// Appends a single byte as two uppercase hex characters to the StringBuilder.
+        /// Avoids per-byte string allocations.
+        /// </summary>
+        public static void AppendHexByte(StringBuilder sb, byte b)
+        {
+            sb.Append(_hexUpper[b >> 4]);
+            sb.Append(_hexUpper[b & 0x0F]);
+        }
+
+        /// <summary>
+        /// Sums the byte values of a hex string (without allocating an intermediate byte array).
+        /// </summary>
+        /// <param name="hexString">The hex string with even length.</param>
+        /// <returns>The sum of all byte values.</returns>
+        public static int SumHexBytes(string hexString)
+        {
+            if (string.IsNullOrEmpty(hexString))
+            {
+                throw new ArgumentException("Hex string cannot be null or empty", nameof(hexString));
+            }
+
+            if ((hexString.Length % 2) != 0)
+            {
+                throw new ArgumentException("Hex string must have even length", nameof(hexString));
+            }
+
+            int sum = 0;
+            for (int i = 0; i < hexString.Length; i += 2)
+            {
+                int hi = HexCharToNibble(hexString[i]);
+                int lo = HexCharToNibble(hexString[i + 1]);
+                sum += (hi << 4) | lo;
+            }
+
+            return sum;
         }
     }
 }

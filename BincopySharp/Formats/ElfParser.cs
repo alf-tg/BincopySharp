@@ -9,36 +9,11 @@ namespace BincopySharp.Formats
     /// <summary>
     /// Parser for ELF (Executable and Linkable Format) files.
     /// </summary>
-    internal class ElfParser : IFormatParser
+    internal static class ElfParser
     {
-        public string FormatName => "ELF";
-
-        public bool CanParse(string data)
-        {
-            // ELF format can't be reliably detected from string data
-            return false;
-        }
-
-        public ParseResult Parse(string data)
-        {
-            throw new NotSupportedException("ELF format requires byte array input, not string");
-        }
-
-        public ParseResult Parse(string data, int wordSizeBytes)
-        {
-            throw new NotSupportedException("ELF format requires byte array input, not string");
-        }
-
-        /// <summary>
-        /// Parses ELF data from a byte array.
-        /// </summary>
-        /// <param name="data">The ELF file data.</param>
-        /// <param name="wordSizeBytes">The word size in bytes.</param>
-        /// <returns>A ParseResult containing the ELF segments and execution start address.</returns>
-        public ParseResult ParseElf(byte[] data, int wordSizeBytes)
+        public static ParseResult ParseElf(byte[] data)
         {
             var result = new ParseResult();
-            int wordSizeBits = wordSizeBytes * 8;
 
             using (var stream = new MemoryStream(data))
             {
@@ -49,7 +24,7 @@ namespace BincopySharp.Formats
                 }
                 catch (ArgumentException ex) when (ex.Message.Contains("not a proper ELF"))
                 {
-                    // File is not ELF format at all — signal format detection to try next format
+                    // File is not ELF format at all - signal format detection to try next format
                     throw new UnsupportedFileFormatException("ELF", $"Not a valid ELF file: {ex.Message}");
                 }
                 catch (Exception ex)
@@ -80,20 +55,20 @@ namespace BincopySharp.Formats
 
                     // Get segment properties - handle both 32-bit and 64-bit
                     ulong segmentAddress = 0;
-                    ulong segmentOffset = 0;
-                    ulong segmentSize = 0;
+                    int segmentOffset = 0;
+                    int segmentSize = 0;
 
                     if (segment is Segment<uint> seg32)
                     {
                         segmentAddress = seg32.PhysicalAddress;
-                        segmentOffset = (ulong)seg32.Offset;
-                        segmentSize = (ulong)seg32.FileSize;
+                        segmentOffset = (int)seg32.Offset;
+                        segmentSize = (int)seg32.FileSize;
                     }
                     else if (segment is Segment<ulong> seg64)
                     {
                         segmentAddress = seg64.PhysicalAddress;
-                        segmentOffset = (ulong)seg64.Offset;
-                        segmentSize = (ulong)seg64.FileSize;
+                        segmentOffset = (int)seg64.Offset;
+                        segmentSize = (int)seg64.FileSize;
                     }
 
                     // Skip BSS segments (FileSize == 0)
@@ -105,18 +80,18 @@ namespace BincopySharp.Formats
                     // Iterate through sections within this segment
                     foreach (var section in elfFile.Sections)
                     {
-                        ulong sectionOffset = 0;
-                        ulong sectionSize = 0;
+                        int sectionOffset = 0;
+                        int sectionSize = 0;
 
                         if (section is Section<uint> sec32)
                         {
-                            sectionOffset = (ulong)sec32.Offset;
-                            sectionSize = (ulong)sec32.Size;
+                            sectionOffset = (int)sec32.Offset;
+                            sectionSize = (int)sec32.Size;
                         }
                         else if (section is Section<ulong> sec64)
                         {
-                            sectionOffset = (ulong)sec64.Offset;
-                            sectionSize = (ulong)sec64.Size;
+                            sectionOffset = (int)sec64.Offset;
+                            sectionSize = (int)sec64.Size;
                         }
 
                         if (sectionSize == 0)
@@ -125,7 +100,7 @@ namespace BincopySharp.Formats
                         }
 
                         // Check if section is within this segment
-                        if (sectionOffset >= segmentOffset && sectionOffset < segmentOffset + segmentSize)
+                        if ((sectionOffset >= segmentOffset) && (sectionOffset < segmentOffset + segmentSize))
                         {
                             // Skip SHT_NOBITS sections (BSS - uninitialized data)
                             if (section.Type == SectionType.NoBits)
@@ -140,19 +115,19 @@ namespace BincopySharp.Formats
                             }
 
                             // Calculate section address
-                            ulong sectionAddress = segmentAddress + sectionOffset - segmentOffset;
+                            ulong sectionAddress = segmentAddress + (ulong)sectionOffset - (ulong)segmentOffset;
 
                             // Read section data directly from the raw byte array
-                            int offset = (int)sectionOffset;
-                            int size = (int)sectionSize;
+                            int offset = sectionOffset;
+                            int size = sectionSize;
 
-                            if (offset + size <= data.Length && size > 0)
+                            if (((offset + size) <= data.Length) && (size > 0))
                             {
                                 byte[] sectionData = new byte[size];
                                 Array.Copy(data, offset, sectionData, 0, size);
 
                                 ulong maxAddress = sectionAddress + (ulong)size;
-                                var seg = new Segment(sectionAddress, maxAddress, sectionData, wordSizeBits);
+                                var seg = new Segment(sectionAddress, maxAddress, sectionData);
                                 result.Segments.Add(seg);
                             }
                         }

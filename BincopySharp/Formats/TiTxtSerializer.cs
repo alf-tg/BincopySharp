@@ -6,36 +6,38 @@ namespace BincopySharp.Formats
     /// <summary>
     /// Serializer for TI-TXT format files.
     /// </summary>
-    internal class TiTxtSerializer : IFormatSerializer
+    internal static class TiTxtSerializer
     {
         private const int TI_TXT_BYTES_PER_LINE = 16;
 
-        public string FormatName => "TI-TXT";
-
-        public string Serialize(Segments segments, SerializerOptions options)
+        public static string Serialize(Segments segments)
         {
-            var lines = new List<string>();
-            int numberOfDataWords = TI_TXT_BYTES_PER_LINE / segments.WordSizeBytes;
-
-            // Validate address range (TI-TXT uses variable-width hex addresses, but 32-bit max is practical)
+            // Pre-estimate capacity: ~50 chars per line (16 bytes * 3 chars + newline) + address directives
+            int estimatedLines = 0;
             foreach (var segment in segments)
             {
-                if (segment.MaximumAddress - 1 > 0xFFFFFFFF)
+                estimatedLines += 1 + (segment.Length + TI_TXT_BYTES_PER_LINE - 1) / TI_TXT_BYTES_PER_LINE;
+            }
+            estimatedLines += 1; // 'q' terminator
+            var sb = new StringBuilder(estimatedLines * 50);
+
+            foreach (var segment in segments)
+            {
+                if ((segment.MaximumAddress - 1) > 0xFFFFFFFF)
                 {
                     throw new BincopyException(
                         "Cannot address more than 0xFFFFFFFF in TI-TXT files (32 bits addresses)");
                 }
-            }
 
-            foreach (var segment in segments)
-            {
-                // Add address directive
-                lines.Add($"@{segment.MinimumAddress / (ulong)segments.WordSizeBytes:X4}");
-
-                // Add data lines
-                foreach (var (_, data) in segment.Chunks(numberOfDataWords))
+                if (sb.Length > 0)
                 {
-                    var sb = new StringBuilder();
+                    sb.Append('\n');
+                }
+                sb.Append($"@{segment.MinimumAddress:X4}");
+
+                foreach (var (_, data) in segment.Chunks(TI_TXT_BYTES_PER_LINE))
+                {
+                    sb.Append('\n');
                     for (int i = 0; i < data.Length; i++)
                     {
                         if (i > 0)
@@ -44,14 +46,14 @@ namespace BincopySharp.Formats
                         }
                         sb.Append($"{data[i]:X2}");
                     }
-                    lines.Add(sb.ToString());
                 }
             }
 
-            // Add end of file marker
-            lines.Add("q");
+            sb.Append('\n');
+            sb.Append('q');
+            sb.Append('\n');
 
-            return string.Join("\n", lines) + "\n";
+            return sb.ToString();
         }
     }
 }

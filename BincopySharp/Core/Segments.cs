@@ -13,54 +13,15 @@ namespace BincopySharp
         private Segment? _currentSegment;
         private int _currentSegmentIndex;
 
-        /// <summary>
-        /// Gets the number of segments in this collection.
-        /// </summary>
+        /// <inheritdoc/>
         public int Count => _segments.Count;
 
-        /// <summary>
-        /// Gets the minimum address across all segments, or null if no segments exist.
-        /// </summary>
-        public ulong? MinimumAddress
-        {
-            get
-            {
-                if (_segments.Count == 0)
-                {
-                    return null;
-                }
-                return _segments[0].MinimumAddress;
-            }
-        }
-
-        /// <summary>
-        /// Gets the maximum address across all segments, or null if no segments exist.
-        /// </summary>
-        public ulong? MaximumAddress
-        {
-            get
-            {
-                if (_segments.Count == 0)
-                {
-                    return null;
-                }
-                return _segments[_segments.Count - 1].MaximumAddress;
-            }
-        }
-
-        /// <summary>
-        /// Initializes a new instance of the Segments class.
-        /// </summary>
-        public Segments()
+        internal Segments()
         {
             _segments = new List<Segment>();
         }
 
-        /// <summary>
-        /// Gets the segment at the specified index.
-        /// </summary>
-        /// <param name="index">The zero-based index of the segment to get.</param>
-        /// <returns>The segment at the specified index.</returns>
+        /// <inheritdoc/>
         public Segment this[int index]
         {
             get
@@ -136,7 +97,7 @@ namespace BincopySharp
 
             // Adjacent or overlapping - merge into existing segment
             ThrowIfOverwriteViolation(insertionIndex, segment, overwrite);
-            AddDataToSegment(existingSegment, segment.MinimumAddress, segment.MaximumAddress, segment.DataSpan.ToArray());
+            AddDataToSegment(existingSegment, segment.MinimumAddress, segment.MaximumAddress, segment.Data.ToArray());
             _currentSegment = existingSegment;
             _currentSegmentIndex = insertionIndex;
 
@@ -155,7 +116,7 @@ namespace BincopySharp
                 {
                     // Adjacent or beginning of the next segment overwritten - merge remaining
                     int offset = (int)(existingSegment.MaximumAddress - next.MinimumAddress);
-                    byte[] remainingData = next.DataSpan.Slice(offset).ToArray();
+                    byte[] remainingData = next.Data.Slice(offset).ToArray();
                     AddDataToSegment(existingSegment, existingSegment.MaximumAddress, next.MaximumAddress, remainingData);
                     _segments.RemoveAt(insertionIndex + 1);
                     break;
@@ -208,7 +169,7 @@ namespace BincopySharp
             if (minAddr < target.MinimumAddress)
             {
                 int prependSize = (int)(target.MinimumAddress - minAddr);
-                ReadOnlySpan<byte> existing = target.DataSpan;
+                ReadOnlySpan<byte> existing = target.Data;
                 byte[] newData = new byte[prependSize + existing.Length];
                 data.AsSpan(0, prependSize).CopyTo(newData);
                 existing.CopyTo(newData.AsSpan(prependSize));
@@ -228,9 +189,9 @@ namespace BincopySharp
             int overwriteBytesLeft = Math.Min(targetBytesLeft, sourceBytesLeft);
 
             // Overwrite what fits
-            data.AsSpan(sourceReadOffset, overwriteBytesLeft).CopyTo(target.MutableDataSpan.Slice(targetWriteOffset));
-            targetBytesLeft = targetBytesLeft - overwriteBytesLeft;
-            sourceBytesLeft = sourceBytesLeft - overwriteBytesLeft;
+            data.AsSpan(sourceReadOffset, overwriteBytesLeft).CopyTo(target.MutableData.Slice(targetWriteOffset));
+            targetBytesLeft -= overwriteBytesLeft;
+            sourceBytesLeft -= overwriteBytesLeft;
 
             // Then append the rest
             sourceReadOffset += overwriteBytesLeft;
@@ -300,7 +261,7 @@ namespace BincopySharp
         /// <param name="alignment">The alignment boundary in BYTES.</param>
         /// <param name="padding">Optional padding bytes to use for alignment.</param>
         /// <returns>An enumerable of tuples containing address in BYTES and chunk data.</returns>
-        public IEnumerable<(ulong Address, byte[] Data)> Chunks(int size = 32, int alignment = 1, byte[]? padding = null)
+        public IEnumerable<(ulong Address, byte[] Data)> Chunks(int size = 32, int alignment = 1, byte? padding = null)
         {
             if (size <= 0)
             {
@@ -317,45 +278,38 @@ namespace BincopySharp
                 throw new BincopyException($"Size {size} is not a multiple of alignment {alignment}");
             }
 
-            (ulong Address, byte[] Data)? previous = null;
+            (ulong Address, byte[] Data)? pending = null;
 
             foreach (var segment in _segments)
             {
                 foreach (var chunk in segment.Chunks(size, alignment, padding))
                 {
-                    var currentChunk = chunk;
+                    if (!pending.HasValue)
+                    {
+                        pending = chunk;
+                        continue;
+                    }
 
                     // When chunks are padded to alignment, the final chunk of the previous
                     // segment and the first chunk of the current segment may overlap by
-                    // one alignment block. Merge them to avoid overwriting lower segment data.
-                    if (previous.HasValue && currentChunk.Address < previous.Value.Address + (ulong)(previous.Value.Data.Length))
+                    // one alignment block. This happens when two non-adjacent segments are
+                    // close enough that their alignment padding covers the same address range.
+                    // Merge into the pending chunk before emitting it.
+                    if (chunk.Address < (pending.Value.Address + (ulong)pending.Value.Data.Length))
                     {
+                        // low  = last alignment block of pending (end of previous segment, padding-filled after real data)
+                        // high = first alignment block of chunk  (start of current segment, padding-filled before real data)
                         byte[] low = new byte[alignment];
                         byte[] high = new byte[alignment];
 
-                        // Get last alignment block from previous chunk
-                        Array.Copy(previous.Value.Data, previous.Value.Data.Length - alignment, low, 0, alignment);
+                        Array.Copy(pending.Value.Data, pending.Value.Data.Length - alignment, low, 0, alignment);
+                        Array.Copy(chunk.Data, 0, high, 0, alignment);
 
-                        // Get first alignment block from current chunk
-                        Array.Copy(currentChunk.Data, 0, high, 0, alignment);
-
-                        // Create alignment * padding
-                        byte[] alignmentPadding = new byte[alignment];
-                        if (padding != null)
-                        {
-                            for (int i = 0; i < alignment; i++)
-                            {
-                                Array.Copy(padding, 0, alignmentPadding, i * WordSizeBytes, WordSizeBytes);
-                            }
-                        }
-
-                        // Direct copy: for each byte position, prefer real data over padding.
-                        // If low[i] differs from padding, it has real data — use it.
-                        // Otherwise, use high[i] (which may be real data or padding).
+                        // At each position, at most one side has real data (the other is padding).
                         byte[] merged = new byte[alignment];
                         for (int i = 0; i < alignment; i++)
                         {
-                            if (low[i] != alignmentPadding[i])
+                            if (!padding.HasValue || (low[i] != padding.Value))
                             {
                                 merged[i] = low[i];
                             }
@@ -365,24 +319,40 @@ namespace BincopySharp
                             }
                         }
 
-                        // Replace first alignment block of chunk with merged data
-                        byte[] newChunkData = new byte[currentChunk.Data.Length];
-                        Array.Copy(merged, 0, newChunkData, 0, alignment);
-                        Array.Copy(currentChunk.Data, alignment, newChunkData, alignment, currentChunk.Data.Length - alignment);
+                        // Rebuild pending with corrected last alignment block
+                        byte[] newPendingData = new byte[pending.Value.Data.Length];
+                        Array.Copy(pending.Value.Data, 0, newPendingData, 0, pending.Value.Data.Length - alignment);
+                        Array.Copy(merged, 0, newPendingData, pending.Value.Data.Length - alignment, alignment);
+                        pending = (pending.Value.Address, newPendingData);
 
-                        currentChunk = (currentChunk.Address, newChunkData);
+                        // Skip the overlapping part of current chunk — the merged block already covers it.
+                        // Emit the rest of the current chunk if it extends beyond the pending chunk.
+                        ulong pendingEnd = pending.Value.Address + (ulong)pending.Value.Data.Length;
+                        if ((chunk.Address + (ulong)chunk.Data.Length) > pendingEnd)
+                        {
+                            yield return pending.Value;
+                            int skipBytes = (int)(pendingEnd - chunk.Address);
+                            byte[] tail = new byte[chunk.Data.Length - skipBytes];
+                            Array.Copy(chunk.Data, skipBytes, tail, 0, tail.Length);
+                            pending = (pendingEnd, tail);
+                        }
+                        // else: current chunk is fully covered by pending — its data is already merged in
                     }
-
-                    yield return currentChunk;
-                    previous = currentChunk;
+                    else
+                    {
+                        yield return pending.Value;
+                        pending = chunk;
+                    }
                 }
+            }
+
+            if (pending.HasValue)
+            {
+                yield return pending.Value;
             }
         }
 
-        /// <summary>
-        /// Returns an enumerator that iterates through the segments.
-        /// </summary>
-        /// <returns>An enumerator for the segments.</returns>
+        /// <inheritdoc/>
         public IEnumerator<Segment> GetEnumerator()
         {
             return _segments.GetEnumerator();
@@ -393,13 +363,10 @@ namespace BincopySharp
             return GetEnumerator();
         }
 
-        /// <summary>
-        /// Returns a string representation of this segments collection.
-        /// </summary>
-        /// <returns>A string describing the segments collection.</returns>
+        /// <inheritdoc/>
         public override string ToString()
         {
-            return $"Segments(count={Count}, word_size_bits={WordSizeBits})";
+            return $"Segments(count={Count})";
         }
     }
 }

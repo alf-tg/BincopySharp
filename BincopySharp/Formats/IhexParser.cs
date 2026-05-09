@@ -8,7 +8,7 @@ namespace BincopySharp.Formats
     /// <summary>
     /// Parser for Intel HEX format files.
     /// </summary>
-    internal class IhexParser : IFormatParser
+    internal static class IhexParser
     {
         // Intel HEX record types
         private const byte IHEX_DATA = 0;
@@ -18,9 +18,7 @@ namespace BincopySharp.Formats
         private const byte IHEX_EXTENDED_LINEAR_ADDRESS = 4;
         private const byte IHEX_START_LINEAR_ADDRESS = 5;
 
-        public string FormatName => "Intel HEX";
-
-        public bool CanParse(string data)
+        public static bool CanParse(string data)
         {
             if (string.IsNullOrWhiteSpace(data))
             {
@@ -28,41 +26,34 @@ namespace BincopySharp.Formats
             }
 
             // Get first non-empty line
-            using (var reader = new StringReader(data))
+            using var reader = new StringReader(data);
+            string? line;
+            while ((line = reader.ReadLine()) != null)
             {
-                string? line;
-                while ((line = reader.ReadLine()) != null)
+                line = line.Trim();
+                if (!string.IsNullOrEmpty(line))
                 {
-                    line = line.Trim();
-                    if (!string.IsNullOrEmpty(line))
+                    // Intel HEX records start with ':'
+                    if ((line.Length >= 11) && (line[0] == ':'))
                     {
-                        // Intel HEX records start with ':'
-                        if (line.Length >= 11 && line[0] == ':')
+                        try
                         {
-                            try
-                            {
-                                UnpackIhex(line);
-                                return true;
-                            }
-                            catch
-                            {
-                                return false;
-                            }
+                            UnpackIhex(line);
+                            return true;
                         }
-                        return false;
+                        catch
+                        {
+                            return false;
+                        }
                     }
+                    return false;
                 }
             }
 
             return false;
         }
 
-        public ParseResult Parse(string data)
-        {
-            return Parse(data, 1); // Default word size
-        }
-
-        public ParseResult Parse(string data, int wordSizeBytes)
+        public static ParseResult Parse(string data)
         {
             if (string.IsNullOrWhiteSpace(data))
             {
@@ -70,7 +61,6 @@ namespace BincopySharp.Formats
             }
 
             var result = new ParseResult();
-            int wordSizeBits = wordSizeBytes * 8;
             ulong extendedSegmentAddress = 0;
             ulong extendedLinearAddress = 0;
 
@@ -92,16 +82,16 @@ namespace BincopySharp.Formats
                         continue;
                     }
 
-                    var (type, address, size, recordData) = UnpackIhex(line);
+                    var (type, address, recordData) = UnpackIhex(line);
 
                     if (type == IHEX_DATA)
                     {
                         // Data record
                         ulong fullAddress = address + extendedSegmentAddress + extendedLinearAddress;
-                        ulong segmentAddress = fullAddress * (ulong)wordSizeBytes;
-                        ulong segmentMaxAddress = segmentAddress + (ulong)size;
+                        ulong segmentAddress = fullAddress;
+                        ulong segmentMaxAddress = segmentAddress + (ulong)recordData.Length;
 
-                        if (accumData != null && segmentAddress == accumMaxAddr)
+                        if ((accumData != null) && (segmentAddress == accumMaxAddr))
                         {
                             accumData.AddRange(recordData);
                             accumMaxAddr = segmentMaxAddress;
@@ -110,7 +100,7 @@ namespace BincopySharp.Formats
                         {
                             if (accumData != null)
                             {
-                                result.Segments.Add(new Segment(accumMinAddr, accumMaxAddr, accumData.ToArray(), wordSizeBits));
+                                result.Segments.Add(new Segment(accumMinAddr, accumMaxAddr, accumData.ToArray()));
                             }
                             // Pre-allocate with reasonable capacity to reduce List resizes for large segments.
                             accumData = new List<byte>(Math.Max(recordData.Length, 4096));
@@ -137,7 +127,7 @@ namespace BincopySharp.Formats
                         extendedLinearAddress <<= 16;
                         extendedSegmentAddress = 0;
                     }
-                    else if (type == IHEX_START_SEGMENT_ADDRESS || type == IHEX_START_LINEAR_ADDRESS)
+                    else if ((type == IHEX_START_SEGMENT_ADDRESS) || (type == IHEX_START_LINEAR_ADDRESS))
                     {
                         // Execution start address record
                         ulong startAddress = 0;
@@ -157,13 +147,13 @@ namespace BincopySharp.Formats
             // Flush remaining accumulator
             if (accumData != null)
             {
-                result.Segments.Add(new Segment(accumMinAddr, accumMaxAddr, accumData.ToArray(), wordSizeBits));
+                result.Segments.Add(new Segment(accumMinAddr, accumMaxAddr, accumData.ToArray()));
             }
 
             return result;
         }
 
-        private (byte Type, ulong Address, int Size, byte[] Data) UnpackIhex(string record)
+        private static (byte type, ulong address, byte[] data) UnpackIhex(string record)
         {
             // Minimum :SSAAAATTCC, where SS is size, AAAA is address, TT is type and CC is checksum
             if (record.Length < 11)
@@ -177,41 +167,41 @@ namespace BincopySharp.Formats
             }
 
             // Parse hex data starting from position 1
-            byte[] value;
+            byte[] recordBytes;
             try
             {
-                value = HexConverter.FromHexString(record.Substring(1));
+                recordBytes = HexConverter.FromHexString(record.Substring(1));
             }
             catch
             {
                 throw new InvalidRecordException(record, $"Invalid hex data in record '{record}'");
             }
 
-            if (value.Length < 5)
+            if (recordBytes.Length < 5)
             {
                 throw new InvalidRecordException(record, $"Record '{record}' too short");
             }
 
-            int size = value[0];
+            int size = recordBytes[0];
 
-            if (size != value.Length - 5)
+            if (size != (recordBytes.Length - 5))
             {
                 throw new InvalidRecordException(record, $"Record '{record}' has wrong size");
             }
 
             // Extract address (2 bytes, big-endian)
-            ulong address = (ulong)((value[1] << 8) | value[2]);
+            ulong address = (ulong)((recordBytes[1] << 8) | recordBytes[2]);
 
             // Extract type
-            byte type = value[3];
+            byte type = recordBytes[3];
 
             // Extract data
             byte[] data = new byte[size];
-            Array.Copy(value, 4, data, 0, size);
+            Array.Copy(recordBytes, 4, data, 0, size);
 
             // Validate checksum
-            byte actualChecksum = value[value.Length - 1];
-            byte expectedChecksum = ChecksumCalculator.CalculateIhexChecksum(record.Substring(1, record.Length - 3));
+            byte actualChecksum = recordBytes[recordBytes.Length - 1];
+            byte expectedChecksum = IhexChecksumCalculator.Calculate(record.Substring(1, record.Length - 3));
 
             if (actualChecksum != expectedChecksum)
             {
@@ -222,7 +212,7 @@ namespace BincopySharp.Formats
                     actualChecksum);
             }
 
-            return (type, address, size, data);
+            return (type, address, data);
         }
     }
 }

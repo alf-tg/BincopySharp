@@ -30,13 +30,13 @@ namespace BincopySharp
         /// Zero-copy read-only view of the internal data buffer.
         /// Valid only for the duration of the calling method — do not store the result.
         /// </summary>
-        public ReadOnlySpan<byte> DataSpan => _data.Span;
+        public ReadOnlySpan<byte> Data => _data.Span;
 
         /// <summary>
         /// Zero-copy mutable view of the internal data buffer. For internal use only.
         /// Valid only for the duration of the calling method — do not store the result.
         /// </summary>
-        internal Span<byte> MutableDataSpan => _data.Span;
+        internal Span<byte> MutableData => _data.Span;
 
         /// <summary>
         /// Replaces the internal data buffer with a copy of the given array.
@@ -62,7 +62,7 @@ namespace BincopySharp
         /// <param name="count">The number of bytes to append.</param>
         internal void AppendToBuffer(byte[] data, int offset, int count)
         {
-            _data.AddRange(new ArraySegment<byte>(data, offset, count));
+            _data.AddRange(data.AsSpan(offset, count));
         }
 
         /// <summary>
@@ -81,7 +81,7 @@ namespace BincopySharp
 
             _ = data ?? throw new ArgumentNullException(nameof(data));
 
-            if (maximumAddress - minimumAddress != (ulong)data.Length)
+            if ((int)(maximumAddress - minimumAddress) != data.Length)
             {
                 throw new ArgumentException(
                     $"Address range ({maximumAddress - minimumAddress} bytes) does not match data length ({data.Length} bytes)");
@@ -228,10 +228,7 @@ namespace BincopySharp
             );
         }
 
-        /// <summary>
-        /// Returns an enumerator that iterates through the segment bytes.
-        /// </summary>
-        /// <returns>An enumerator for the segment bytes.</returns>
+        /// <inheritdoc/>
         public IEnumerator<byte> GetEnumerator()
         {
             return ((IEnumerable<byte>)_data).GetEnumerator();
@@ -242,10 +239,7 @@ namespace BincopySharp
             return GetEnumerator();
         }
 
-        /// <summary>
-        /// Returns a string representation of this segment.
-        /// </summary>
-        /// <returns>A string describing the segment.</returns>
+        /// <inheritdoc/>
         public override string ToString()
         {
             return $"Segment(address=0x{MinimumAddress:X}, data={_data.Count} bytes)";

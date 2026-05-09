@@ -5,195 +5,118 @@ namespace BincopySharp.Formats
     /// <summary>
     /// Serializer for raw binary format files.
     /// </summary>
-    internal class BinarySerializer : IFormatSerializer
+    internal static class BinarySerializer
     {
-        public string FormatName => "Binary";
-
-        public string Serialize(Segments segments, SerializerOptions options)
-        {
-            throw new NotSupportedException("Binary format produces byte array output, not string. Use SerializeBinary instead.");
-        }
-
-        /// <summary>
-        /// Serializes segments to a raw binary byte array.
-        /// </summary>
-        public byte[] SerializeBinary(Segments segments, ulong? minimumAddress, ulong? maximumAddress, byte padding, int wordSizeBytes)
-        {
-            // Convert single byte padding to byte array
-            byte[] paddingArray = new byte[wordSizeBytes];
-            for (int i = 0; i < wordSizeBytes; i++)
-            {
-                paddingArray[i] = padding;
-            }
-            return SerializeBinary(segments, minimumAddress, maximumAddress, paddingArray, wordSizeBytes);
-        }
-
         /// <summary>
         /// Serializes segments to a raw binary byte array with custom padding.
-        /// Uses pre-calculated capacity to avoid List resizing.
         /// </summary>
-        public byte[] SerializeBinary(Segments segments, ulong? minimumAddress, ulong? maximumAddress, byte[] padding, int wordSizeBytes)
+        /// <param name="segments">The segments to serialize.</param>
+        /// <param name="minimumAddress">Start address (inclusive) in bytes. Null uses the first segment's minimum address.</param>
+        /// <param name="maximumAddress">End address (exclusive) in bytes. Null uses the last segment's maximum address.</param>
+        /// <param name="padding">Byte value used to fill gaps between segments.</param>
+        /// <returns>A byte array containing the binary data.</returns>
+        public static byte[] SerializeBinary(Segments segments, ulong? minimumAddress, ulong? maximumAddress, byte padding)
         {
             if (segments.Count == 0)
             {
                 return Array.Empty<byte>();
             }
 
-            ulong currentMaximumAddress;
+            ulong outputCursor;
             if (minimumAddress.HasValue)
             {
-                currentMaximumAddress = minimumAddress.Value;
+                outputCursor = minimumAddress.Value;
             }
             else
             {
-                currentMaximumAddress = segments.MinimumAddress!.Value / (ulong)wordSizeBytes;
+                outputCursor = segments[0].MinimumAddress;
             }
 
-            ulong finalMaximumAddress;
+            ulong endAddress;
             if (maximumAddress.HasValue)
             {
-                finalMaximumAddress = maximumAddress.Value;
+                endAddress = maximumAddress.Value;
             }
             else
             {
-                finalMaximumAddress = segments.MaximumAddress!.Value / (ulong)wordSizeBytes;
+                endAddress = segments[segments.Count - 1].MaximumAddress;
             }
 
-            if (currentMaximumAddress >= finalMaximumAddress)
+            if (outputCursor >= endAddress)
             {
                 return Array.Empty<byte>();
             }
 
             // Pre-calculate total output size in bytes for capacity
-            ulong totalCapacityBytes = (finalMaximumAddress - currentMaximumAddress) * (ulong)wordSizeBytes;
+            ulong totalCapacityBytes = endAddress - outputCursor;
             if (totalCapacityBytes > (ulong)int.MaxValue)
             {
                 throw new BincopyException($"Requested range is too large: {totalCapacityBytes} bytes exceeds maximum array size of {int.MaxValue} bytes");
             }
-            byte[] binary = new byte[totalCapacityBytes];
-            long writePos = 0;
+            byte[] binary = new byte[(int)totalCapacityBytes];
+            int writePos = 0;
 
             foreach (var segment in segments)
             {
-                ulong address = segment.MinimumAddress / (ulong)wordSizeBytes;
-                ulong length = segment.Length / (ulong)wordSizeBytes;
-                byte[] data = segment.DataSpan.ToArray();
+                ulong address = segment.MinimumAddress;
+                byte[] data = segment.Data.ToArray();
                 int dataOffset = 0;
                 int dataLength = data.Length;
 
                 // Discard data below the minimum address
-                if (address < currentMaximumAddress)
+                if (address < outputCursor)
                 {
-                    if (address + length <= currentMaximumAddress)
+                    if ((address + (ulong)dataLength) <= outputCursor)
                     {
                         continue;
                     }
 
-                    int offset = (int)((currentMaximumAddress - address) * (ulong)wordSizeBytes);
-                    dataOffset = offset;
-                    dataLength = data.Length - offset;
-                    length = (ulong)dataLength / (ulong)wordSizeBytes;
-                    address = currentMaximumAddress;
+                    dataOffset = (int)(outputCursor - address);
+                    dataLength = data.Length - dataOffset;
+                    address = outputCursor;
                 }
 
                 // Discard data above the maximum address
-                if (address + length > finalMaximumAddress)
+                if ((address + (ulong)dataLength) > endAddress)
                 {
-                    if (address < finalMaximumAddress)
+                    if (address < endAddress)
                     {
-                        dataLength = (int)((finalMaximumAddress - address) * (ulong)wordSizeBytes);
-                        length = (ulong)dataLength / (ulong)wordSizeBytes;
+                        // Address may have been advanced by the left-trim above, so recompute from address
+                        dataLength = (int)(endAddress - address);
                     }
-                    else if (finalMaximumAddress >= currentMaximumAddress)
+                    else
                     {
                         // Add padding to reach maximum address
-                        ulong wordsToFill = finalMaximumAddress - currentMaximumAddress;
-                        long fillBytes = (long)(wordsToFill * (ulong)wordSizeBytes);
-                        FillWithPadding(binary, writePos, fillBytes, padding);
-                        writePos += fillBytes;
+                        int bytesToFill = (int)(endAddress - outputCursor);
+                        binary.AsSpan(writePos, bytesToFill).Fill(padding);
+                        writePos += bytesToFill;
                         break;
                     }
                 }
 
                 // Add padding between segments
-                ulong gapWords = address - currentMaximumAddress;
-                if (gapWords > 0)
+                int gapBytes = (int)(address - outputCursor);
+                if (gapBytes > 0)
                 {
-                    long gapBytes = (long)(gapWords * (ulong)wordSizeBytes);
-                    FillWithPadding(binary, writePos, gapBytes, padding);
+                    binary.AsSpan(writePos, gapBytes).Fill(padding);
                     writePos += gapBytes;
                 }
 
                 // Add segment data
                 Array.Copy(data, dataOffset, binary, writePos, dataLength);
                 writePos += dataLength;
-                currentMaximumAddress = address + length;
+                outputCursor = address + (ulong)dataLength;
             }
 
-            // Trim to actual written size (original code didn't add trailing padding)
-            if (writePos < (long)totalCapacityBytes)
+            // Trim to actual written size
+            if (writePos < (int)totalCapacityBytes)
             {
-                byte[] result = new byte[writePos];
-                Array.Copy(binary, 0, result, 0, writePos);
-                return result;
+                byte[] trimmed = new byte[writePos];
+                Array.Copy(binary, 0, trimmed, 0, writePos);
+                return trimmed;
             }
 
             return binary;
-        }
-
-        /// <summary>
-        /// Fills a region of a byte array with a repeating padding pattern using Buffer.BlockCopy doubling.
-        /// </summary>
-        private static void FillWithPadding(byte[] buffer, long offset, long count, byte[] padding)
-        {
-            if (count <= 0) return;
-
-            int padLen = padding.Length;
-
-            // Check if all padding bytes are the same (common case: 0xFF fill)
-            bool allSame = true;
-            byte first = padding[0];
-            for (int i = 1; i < padLen; i++)
-            {
-                if (padding[i] != first)
-                {
-                    allSame = false;
-                    break;
-                }
-            }
-
-            if (allSame)
-            {
-                // Fast path: single byte fill using doubling pattern
-                buffer[offset] = first;
-                int filled = 1;
-                int total = (int)count;
-                while (filled < total)
-                {
-                    int toCopy = Math.Min(filled, total - filled);
-                    Buffer.BlockCopy(buffer, (int)offset, buffer, (int)offset + filled, toCopy);
-                    filled += toCopy;
-                }
-            }
-            else
-            {
-                // Multi-byte padding pattern: seed then double
-                int seeded = 0;
-                int total = (int)count;
-                while (seeded < total && seeded < padLen)
-                {
-                    buffer[offset + seeded] = padding[seeded % padLen];
-                    seeded++;
-                }
-                // Double using BlockCopy
-                int filled = seeded;
-                while (filled < total)
-                {
-                    int toCopy = Math.Min(filled, total - filled);
-                    Buffer.BlockCopy(buffer, (int)offset, buffer, (int)offset + filled, toCopy);
-                    filled += toCopy;
-                }
-            }
         }
     }
 }
