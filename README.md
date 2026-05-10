@@ -7,6 +7,8 @@ C# library for reading, writing, and manipulating firmware binary files. Heavily
 
 Merge, crop, fill and convert between Intel HEX, SREC, TI-TXT and ELF files with a single API.
 
+**[API documentation](https://alf-tg.github.io/BincopySharp)**
+
 ## Supported formats
 
 | Format | Read | Write | Notes |
