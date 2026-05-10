@@ -12,7 +12,13 @@
     <PackageProjectUrl>https://alf-tg.github.io/BincopySharp</PackageProjectUrl>
     <RepositoryUrl>https://github.com/alf-tg/BincopySharp</RepositoryUrl>
     <PackageTags>binary;hex;srec;ihex;elf;firmware;embedded</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <Version>1.0.1</Version>
   </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="..\README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
 
   <ItemGroup>
     <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">

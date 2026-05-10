@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.0.1] - 2026-05-10
+
+### Fixed
+
+- README now included in the NuGet package
+
 ## [1.0.0] - 2026-05-10
 
 ### Added
