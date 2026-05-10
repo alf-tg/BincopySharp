@@ -176,7 +176,7 @@ namespace BincopySharp
 
         /// <summary>
         /// Adds data from a string by automatically detecting the format.
-        /// Supports SREC, Intel HEX, TI-TXT and VMEM formats.
+        /// Supports SREC, Intel HEX and TI-TXT formats.
         /// </summary>
         /// <param name="data">The data string to add.</param>
         /// <param name="overwrite">Whether to overwrite existing data. Default is false.</param>
@@ -260,7 +260,7 @@ namespace BincopySharp
 
         /// <summary>
         /// Adds data from a file by automatically detecting the format.
-        /// Supports SREC, Intel HEX, TI-TXT, VMEM, and ELF formats.
+        /// Supports SREC, Intel HEX, TI-TXT and ELF formats.
         /// Raw binary files are not supported - use AddBinaryFile() instead.
         /// This is intentional: falling back to binary would silently load unrecognized or corrupt files as valid data.
         /// </summary>
