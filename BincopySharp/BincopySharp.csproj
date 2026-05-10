@@ -9,8 +9,8 @@
     <Authors>Alfonso Toledo</Authors>
     <Description>C# library for reading and writing binary files in various formats (Motorola S-Record, Intel HEX, TI-TXT, ELF, and binary files). Heavily inspired by the Python bincopy library by Erik Moqvist.</Description>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
-    <PackageProjectUrl>https://github.com/YOUR-ORG/BincopySharp</PackageProjectUrl>
-    <RepositoryUrl>https://github.com/YOUR-ORG/BincopySharp</RepositoryUrl>
+    <PackageProjectUrl>https://alf-tg.github.io/BincopySharp</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/alf-tg/BincopySharp</RepositoryUrl>
     <PackageTags>binary;hex;srec;ihex;elf;firmware;embedded</PackageTags>
   </PropertyGroup>
 
