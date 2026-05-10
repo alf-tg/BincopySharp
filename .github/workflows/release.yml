@@ -1,0 +1,51 @@
+name: Release
+
+on:
+  push:
+    tags: [ 'v*' ]
+
+jobs:
+  publish-nuget:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.x
+
+      - run: dotnet restore
+
+      - run: dotnet build --no-restore --configuration Release
+
+      - run: dotnet test --no-build --configuration Release
+
+      - run: dotnet pack BincopySharp/BincopySharp.csproj --no-build --configuration Release --output ./nupkg
+
+      - run: dotnet nuget push ./nupkg/*.nupkg --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json
+
+  publish-docs:
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.x
+
+      - run: dotnet tool install -g docfx
+
+      - run: docfx docs/docfx.json
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs/_site
+
+      - uses: actions/deploy-pages@v4
+        id: deployment
